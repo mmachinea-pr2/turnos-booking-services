@@ -1,0 +1,9 @@
+.git
+.idea
+target
+.env
+.env.*
+*.log
+docs
+ChatGPT
+chatgpt

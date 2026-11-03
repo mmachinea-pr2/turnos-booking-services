@@ -1,0 +1,36 @@
+name: machinea-turnos-booking
+services:
+  mysql:
+    image: mysql:8.4.8
+    environment:
+      MYSQL_DATABASE: ${BOOKING_DB_NAME:?Completar BOOKING_DB_NAME en .env}
+      MYSQL_USER: ${BOOKING_DB_USER:?Completar BOOKING_DB_USER en .env}
+      MYSQL_PASSWORD: ${BOOKING_DB_PASSWORD:?Completar BOOKING_DB_PASSWORD en .env}
+      MYSQL_ROOT_PASSWORD: ${BOOKING_MYSQL_ROOT_PASSWORD:?Completar BOOKING_MYSQL_ROOT_PASSWORD en .env}
+    ports:
+      - "127.0.0.1:${BOOKING_DB_PORT:-3309}:3306"
+    volumes:
+      - booking_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql -h 127.0.0.1 -u $$MYSQL_USER $$MYSQL_DATABASE -e 'SELECT 1' >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+  booking:
+    build: .
+    environment:
+      BOOKING_DB_HOST: mysql
+      BOOKING_DB_PORT: 3306
+      BOOKING_DB_NAME: ${BOOKING_DB_NAME:?Completar BOOKING_DB_NAME en .env}
+      BOOKING_DB_USER: ${BOOKING_DB_USER:?Completar BOOKING_DB_USER en .env}
+      BOOKING_DB_PASSWORD: ${BOOKING_DB_PASSWORD:?Completar BOOKING_DB_PASSWORD en .env}
+      BOOKING_APP_HOST: 0.0.0.0
+      BOOKING_APP_PORT: 8081
+    ports:
+      - "127.0.0.1:${BOOKING_APP_PORT:-8081}:8081"
+    depends_on:
+      mysql:
+        condition: service_healthy
+volumes:
+  booking_mysql_data:

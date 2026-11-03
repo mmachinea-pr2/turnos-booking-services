@@ -12,7 +12,7 @@ Proyecto integrador individual de Programación II, 2026. Se utilizan exclusivam
 
 ## Estado actual
 
-Primera base ejecutable: Spring Boot con endpoint de salud. Todavía no implementa reservas, autenticación, persistencia ni integraciones externas.
+Base ejecutable con Spring Boot, salud, MySQL propio, Flyway y Docker Compose. Todavía no implementa reservas, autenticación ni integraciones externas.
 
 ## Alcance previsto
 
@@ -26,7 +26,7 @@ Primera base ejecutable: Spring Boot con endpoint de salud. Todavía no implemen
 
 ## Tecnologías
 
-Java 25 (Temurin), Spring Boot 4.1.1, Maven Wrapper 3.10.0, Spring MVC, Actuator y JUnit 5. Se mantienen las versiones utilizadas en catálogo. MySQL y Flyway se incorporarán en el siguiente incremento, con datos y credenciales propios.
+Java 25 (Temurin), Spring Boot 4.1.1, Maven Wrapper 3.10.0, Spring MVC, Actuator y JUnit 5. Se mantienen las versiones utilizadas en catálogo. MySQL 8.4.8 y Flyway administran una base propia. Las pruebas usan Testcontainers con MySQL real.
 
 Cada backend será propietario de su base lógica o esquema, usuario y migraciones. Docker Compose deberá levantar el servicio y su infraestructura local. No se utilizará una base embebida como persistencia principal.
 
@@ -47,32 +47,62 @@ La [planificación](https://github.com/mmachinea-pr2/turnos-catalog-service/blob
 
 ## Ejecución y pruebas
 
-Requisito: JDK 25. No hace falta instalar Maven ni tener Docker o la cátedra disponibles para esta primera etapa.
+Requisitos: JDK 25, Docker y Docker Compose. Maven se ejecuta con el Wrapper del repositorio.
+
+### Configuración local
+
+Si todavía no existe `.env`, copiar `.env.example` a `.env` y completar BOOKING_DB_PASSWORD y BOOKING_MYSQL_ROOT_PASSWORD con contraseñas diferentes. No sobrescribir un `.env` existente. Nunca publicarlo: está excluido de Git y del contexto Docker.
+
+Valores por defecto: base `booking`, usuario `booking_app`, MySQL local `3309` y HTTP `8081`. El proyecto Compose `machinea-turnos-booking` tiene su propio volumen `booking_mysql_data`, independiente de catálogo. No usa el usuario root para la aplicación.
+
+### Aplicación en IntelliJ o terminal
 
 ```bash
+docker compose up -d --wait mysql
 sdk env
+set -a
+. ./.env
+set +a
+unset BOOKING_MYSQL_ROOT_PASSWORD
 ./mvnw spring-boot:run
 ```
 
-Si no usás SDKMAN, seleccioná JDK 25 en IntelliJ y abrí `pom.xml` como proyecto Maven. Ejecutá `BookingApplication`.
-
-El servicio escucha por defecto en `127.0.0.1:8081`, separado del puerto de catálogo:
+En IntelliJ, abrir `pom.xml` como proyecto Maven, seleccionar JDK 25 y ejecutar `BookingApplication`. Cargar las variables BOOKING_DB_NAME, BOOKING_DB_USER y BOOKING_DB_PASSWORD en su configuración de ejecución; Spring no lee `.env` automáticamente. HOST y PORT usan los valores locales por defecto.
 
 ```bash
 curl http://localhost:8081/actuator/health
 ```
 
-Respuesta esperada: `{"status":"UP"}`. Solo se expone el endpoint de salud de Actuator, sin detalles internos. Todavía no existen endpoints de negocio. La seguridad se incorporará antes de exponer operaciones protegidas.
+Respuesta esperada: `{"status":"UP"}`. Salud incluye conexión a MySQL, sin mostrar detalles internos. Si la base falla, salud puede responder DOWN. No existen aún endpoints de negocio.
 
-Variables opcionales: `BOOKING_APP_HOST` (127.0.0.1) y `BOOKING_APP_PORT` (8081). Spring no carga `.env` automáticamente; exportá las variables o configuralas en IntelliJ.
+### Aplicación y base en Docker
+
+Detener antes la instancia local de booking si ocupa 8081:
+
+```bash
+docker compose up --build -d
+docker compose ps
+curl http://localhost:8081/actuator/health
+```
+
+Para probar en otro puerto sin detener otra aplicación, usar `BOOKING_APP_PORT=18082 docker compose up --build -d` y consultar ese puerto. Dentro de Docker el backend usa MySQL por nombre de servicio y puerto 3306. Las credenciales se inyectan al ejecutar, no al construir la imagen; el proceso Java corre sin root.
+
+`docker compose down` detiene y elimina contenedores conservando los datos. No agregar `-v` salvo que se quiera borrar la base. Las variables de creación de usuario y contraseña de MySQL se aplican al inicializar un volumen vacío; cambiarlas luego no cambia automáticamente las credenciales del volumen existente.
+
+### Pruebas y paquete
 
 ```bash
 ./mvnw -B -ntp clean verify
-java -jar target/turnos-booking-services-0.0.1-SNAPSHOT.jar
 ```
 
-Las pruebas levantan un servidor HTTP en un puerto aleatorio, comprueban salud y verifican que Actuator no exponga configuración ni variables de entorno. `verify` genera el JAR ejecutable.
+Las pruebas usan un contenedor MySQL temporal y un puerto HTTP aleatorio; no leen la base de desarrollo ni requieren credenciales de cátedra. Verifican salud, endpoints internos no expuestos y aplicación de una migración de prueba con escritura y lectura SQL.
 
-## Próximo incremento
+Se genera `target/turnos-booking-services-0.0.1-SNAPSHOT.jar`, ejecutable con `java -jar` después de exportar la configuración de base.
 
-MySQL propio, Flyway, pruebas con base temporal y Docker Compose. El primer commit no crea tablas de reservas ni accede a la base de catálogo.
+## Migraciones
+
+Flyway está habilitado y Hibernate utiliza `validate`, nunca `create` ni `update`. Aún no hay tablas de negocio: Flyway prepara su historial en la base. La migración `src/test/resources/db/migration/V1__setup_probe.sql` se utiliza exclusivamente en pruebas y no se incluye en el JAR de producción. Las migraciones reales se agregarán en `src/main/resources/db/migration` al implementar el modelo de reservas.
+
+## Pendientes
+
+Modelo de reservas, usuarios y seguridad JWT, consultas a catálogo, integraciones REST/Kafka, CI, cobertura y SonarCloud. Esta base técnica no implementa todavía el flujo funcional.

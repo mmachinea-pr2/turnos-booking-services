@@ -1,5 +1,12 @@
 package ar.edu.programacion2.booking;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.mysql.MySQLContainer;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -12,8 +19,30 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class BookingApplicationTests {
+    @Container
+    static final MySQLContainer MYSQL = new MySQLContainer("mysql:8.4.8");
+
+    @DynamicPropertySource
+    static void database(DynamicPropertyRegistry properties) {
+        properties.add("spring.datasource.url", MYSQL::getJdbcUrl);
+        properties.add("spring.datasource.username", MYSQL::getUsername);
+        properties.add("spring.datasource.password", MYSQL::getPassword);
+    }
+
+    @Autowired JdbcTemplate jdbc;
+
+    @Test
+    void flywayAppliesTestMigrationAndDatabaseAllowsWrites() {
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1", Integer.class))
+            .isEqualTo(1);
+        jdbc.update("INSERT INTO setup_probe (id, description) VALUES (1, 'booking database ready')");
+        assertThat(jdbc.queryForObject("SELECT description FROM setup_probe WHERE id = 1", String.class))
+            .isEqualTo("booking database ready");
+    }
+
     @LocalServerPort
     int port;
 
