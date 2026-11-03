@@ -5,5 +5,5 @@
 - Puerto local 8081 y variables BOOKING_APP_HOST/BOOKING_APP_PORT: ejecución simultánea con catálogo, que usa 8080 por defecto.
 - Actuator publica únicamente salud, sin detalles. Incluye la conectividad a su propia base; no mide integraciones externas todavía inexistentes.
 - MySQL 8.4.8 usa una base, usuario y volumen propios. El puerto local 3309 evita colisiones con catálogo (3308). No se utiliza H2 como sustituto. Flyway gestiona migraciones y Hibernate solo valida. No se crean tablas de negocio ficticias para esta etapa.
-- JWT, propiedad de usuarios, Argon2id, reservas e integración REST/Kafka son trabajo pendiente. No se afirma que la base inicial cumpla todavía esos requisitos.
+- Booking administra usuarios propios mediante JDBC y contratos DTO, Argon2id y JWT HS256 con clave externa. Se propaga la identidad UUID en sub. La protección de catálogo y la propiedad de futuras reservas siguen pendientes; ver la especificación de usuarios.
 - CI y cobertura están configurados con Java 25 y JaCoCo. El envío a SonarCloud usa una clave propia de booking y requiere completar la vinculación y el secreto remoto; no se reutiliza la clave de proyecto de catálogo.

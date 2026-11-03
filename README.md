@@ -12,7 +12,7 @@ Proyecto integrador individual de Programación II, 2026. Se utilizan exclusivam
 
 ## Estado actual
 
-Base ejecutable con Spring Boot, salud, MySQL propio, Flyway y Docker Compose. Todavía no implementa reservas, autenticación ni integraciones externas.
+Base ejecutable con Spring Boot, salud, MySQL propio, Flyway y Docker Compose. Incluye registro, login Argon2id y JWT. Todavía no implementa reservas ni integraciones externas.
 
 ## Alcance previsto
 
@@ -51,7 +51,7 @@ Requisitos: JDK 25, Docker y Docker Compose. Maven se ejecuta con el Wrapper del
 
 ### Configuración local
 
-Si todavía no existe `.env`, copiar `.env.example` a `.env` y completar BOOKING_DB_PASSWORD y BOOKING_MYSQL_ROOT_PASSWORD con contraseñas diferentes. No sobrescribir un `.env` existente. Nunca publicarlo: está excluido de Git y del contexto Docker.
+Si todavía no existe `.env`, copiar `.env.example` a `.env` y completar BOOKING_DB_PASSWORD y BOOKING_MYSQL_ROOT_PASSWORD con contraseñas diferentes. Completar también BOOKING_JWT_SECRET con Base64 de al menos 32 bytes aleatorios (ver documentación de seguridad). No sobrescribir un `.env` existente. Nunca publicarlo: está excluido de Git y del contexto Docker.
 
 Valores por defecto: base `booking`, usuario `booking_app`, MySQL local `3309` y HTTP `8081`. El proyecto Compose `machinea-turnos-booking` tiene su propio volumen `booking_mysql_data`, independiente de catálogo. No usa el usuario root para la aplicación.
 
@@ -67,13 +67,13 @@ unset BOOKING_MYSQL_ROOT_PASSWORD
 ./mvnw spring-boot:run
 ```
 
-En IntelliJ, abrir `pom.xml` como proyecto Maven, seleccionar JDK 25 y ejecutar `BookingApplication`. Cargar las variables BOOKING_DB_NAME, BOOKING_DB_USER y BOOKING_DB_PASSWORD en su configuración de ejecución; Spring no lee `.env` automáticamente. HOST y PORT usan los valores locales por defecto.
+En IntelliJ, abrir `pom.xml` como proyecto Maven, seleccionar JDK 25 y ejecutar `BookingApplication`. Cargar las variables BOOKING_DB_NAME, BOOKING_DB_USER, BOOKING_DB_PASSWORD y BOOKING_JWT_SECRET en su configuración de ejecución; Spring no lee `.env` automáticamente. HOST y PORT usan los valores locales por defecto.
 
 ```bash
 curl http://localhost:8081/actuator/health
 ```
 
-Respuesta esperada: `{"status":"UP"}`. Salud incluye conexión a MySQL, sin mostrar detalles internos. Si la base falla, salud puede responder DOWN. No existen aún endpoints de negocio.
+Respuesta esperada: `{"status":"UP"}`. Salud incluye conexión a MySQL, sin mostrar detalles internos. Si la base falla, salud puede responder DOWN. Los endpoints de usuarios se detallan en [usuarios y JWT](docs/features/usuarios-jwt/SPEC.md).
 
 ### Aplicación y base en Docker
 
@@ -95,18 +95,22 @@ Para probar en otro puerto sin detener otra aplicación, usar `BOOKING_APP_PORT=
 ./mvnw -B -ntp clean verify
 ```
 
-Las pruebas usan un contenedor MySQL temporal y un puerto HTTP aleatorio; no leen la base de desarrollo ni requieren credenciales de cátedra. Verifican salud, endpoints internos no expuestos y aplicación de una migración de prueba con escritura y lectura SQL.
+Las pruebas usan un contenedor MySQL temporal y un puerto HTTP aleatorio; no leen la base de desarrollo ni requieren credenciales de cátedra. Verifican salud, migración real de usuarios, registro, autenticación, autorización y validación JWT/CORS. La clave de pruebas no es una credencial de desarrollo.
 
 Se genera `target/turnos-booking-services-0.0.1-SNAPSHOT.jar`, ejecutable con `java -jar` después de exportar la configuración de base.
 
 ## Migraciones
 
-Flyway está habilitado y Hibernate utiliza `validate`, nunca `create` ni `update`. Aún no hay tablas de negocio: Flyway prepara su historial en la base. La migración `src/test/resources/db/migration/V1__setup_probe.sql` se utiliza exclusivamente en pruebas y no se incluye en el JAR de producción. Las migraciones reales se agregarán en `src/main/resources/db/migration` al implementar el modelo de reservas.
+Flyway está habilitado y Hibernate utiliza `validate`, nunca `create` ni `update`. La migración V1 de `src/main/resources/db/migration` crea usuarios propios de booking. Las pruebas usan esta misma migración sobre MySQL temporal; se retiró setup_probe de los recursos de test.
 
 ## Pendientes
 
-Modelo de reservas, usuarios y seguridad JWT, consultas a catálogo, integraciones REST/Kafka y activación remota de SonarCloud. Esta base técnica no implementa todavía el flujo funcional.
+Modelo de reservas, protección JWT de catálogo, consultas entre servicios e integraciones REST/Kafka pendientes.
 
 ## CI y cobertura
 
 `./mvnw -B -ntp clean verify` genera cobertura JaCoCo en `target/site/jacoco/index.html` y `jacoco.xml`. GitHub Actions ejecuta las pruebas en pushes a main y PR, y envía el análisis al proyecto propio de booking en SonarQube Cloud. Requiere configurar `SONAR_TOKEN` en este repositorio y vincular el proyecto; no se necesita para las pruebas locales. Ver [configuración y pasos de activación](docs/features/ci-cobertura/SPEC.md).
+
+## Usuarios y seguridad
+
+Registro: POST `/api/register`. Login: POST `/api/authenticate`. Perfil propio: GET `/api/account` con Bearer JWT. Contratos, validaciones, variables y límites: [usuarios y JWT](docs/features/usuarios-jwt/SPEC.md). La salud continúa pública. No usar el token técnico de cátedra para iniciar sesión en booking.
