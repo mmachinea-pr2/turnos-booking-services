@@ -29,7 +29,7 @@ Responde 200 con `{"id_token":"..."}` y cabecera `Authorization: Bearer ...`. Ca
 
 Requiere `Authorization: Bearer <JWT>`. Devuelve exclusivamente el usuario identificado por `sub`, activo y presente en la base. No acepta un identificador de usuario para seleccionar otra cuenta. La propiedad de futuras reservas se implementará usando este identificador autenticado; todavía no existen endpoints de reservas.
 
-Salud GET /actuator/health permanece pública. Los demás endpoints requieren ROLE_USER. Token ausente, alterado, vencido, de otra clave/emisor/audiencia o con claims inválidos: 401; token válido sin ROLE_USER: 403. La aplicación es stateless: no usa cookies, sesión, HTTP Basic ni formulario de login. CSRF se desactiva por ese contrato Bearer exclusivo.
+Salud GET /actuator/health permanece pública. Los demás endpoints requieren ROLE_USER. Token ausente, alterado, vencido, de otra clave/emisor/audiencia o con claims inválidos: 401; token válido sin ROLE_USER: 403. La aplicación es stateless: no usa cookies, sesión, HTTP Basic ni formulario de login. CSRF permanece activo. Solo POST /api/register y POST /api/authenticate tienen excepciones explícitas porque reciben credenciales y no autentican por cookies. Spring Resource Server exceptúa las solicitudes con Authorization: Bearer, cuyo JWT valida antes de permitir acceso. Las solicitudes protegidas sin autenticación, incluidas escrituras sin Bearer ni token CSRF, reciben 401 mediante el manejador de Resource Server.
 
 ## Contraseñas y persistencia
 

@@ -19,6 +19,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import static org.assertj.core.api.Assertions.assertThat;
 
+@org.springframework.context.annotation.Import(BookingApplicationTests.ProtectedWriteController.class)
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class BookingApplicationTests {
@@ -36,6 +37,7 @@ class BookingApplicationTests {
     }
 
     @Autowired JdbcTemplate jdbc;
+    @Autowired org.springframework.security.web.FilterChainProxy securityFilters;
 
     @Test
     void flywayCreatesUserSchema() {
@@ -240,6 +242,35 @@ class BookingApplicationTests {
         jdbc.update("UPDATE application_user SET activated = false WHERE login = ?", name);
         assertThat(request("GET", "/api/account", null, token).statusCode()).isEqualTo(401);
     }
+    @org.springframework.web.bind.annotation.RestController
+    static class ProtectedWriteController {
+        @org.springframework.web.bind.annotation.PostMapping("/api/security-test")
+        @org.springframework.web.bind.annotation.ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+        void write() { }
+    }
+
+    @Test
+    void protectedWriteAcceptsBearerWithoutCsrfToken() throws Exception {
+        String name = uniqueLogin();
+        registerUser(name);
+        assertThat(request("POST", "/api/security-test", null, login(name)).statusCode()).isEqualTo(204);
+    }
+
+    @Test
+    void protectedWriteRejectsMissingCsrfAndCookieToken() throws Exception {
+        assertThat(securityFilters.getFilters("/api/security-test"))
+            .anyMatch(org.springframework.security.web.csrf.CsrfFilter.class::isInstance);
+        assertThat(request("POST", "/api/security-test", null, null).statusCode()).isEqualTo(401);
+        String name = uniqueLogin();
+        registerUser(name);
+        try (var client = HttpClient.newHttpClient()) {
+            var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/security-test"))
+                .header("Cookie", "token=" + login(name))
+                .POST(HttpRequest.BodyPublishers.noBody()).build();
+            assertThat(client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(401);
+        }
+    }
+
     private HttpResponse<String> post(String path, Object body) throws Exception {
         return request("POST", path, json.writeValueAsString(body), null);
     }
