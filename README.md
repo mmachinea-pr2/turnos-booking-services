@@ -105,4 +105,8 @@ Flyway está habilitado y Hibernate utiliza `validate`, nunca `create` ni `updat
 
 ## Pendientes
 
-Modelo de reservas, usuarios y seguridad JWT, consultas a catálogo, integraciones REST/Kafka, CI, cobertura y SonarCloud. Esta base técnica no implementa todavía el flujo funcional.
+Modelo de reservas, usuarios y seguridad JWT, consultas a catálogo, integraciones REST/Kafka y activación remota de SonarCloud. Esta base técnica no implementa todavía el flujo funcional.
+
+## CI y cobertura
+
+`./mvnw -B -ntp clean verify` genera cobertura JaCoCo en `target/site/jacoco/index.html` y `jacoco.xml`. GitHub Actions ejecuta las pruebas en pushes a main y PR, y envía el análisis al proyecto propio de booking en SonarQube Cloud. Requiere configurar `SONAR_TOKEN` en este repositorio y vincular el proyecto; no se necesita para las pruebas locales. Ver [configuración y pasos de activación](docs/features/ci-cobertura/SPEC.md).
