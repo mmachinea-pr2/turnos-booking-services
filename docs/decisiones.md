@@ -6,4 +6,4 @@
 - Actuator publica únicamente salud, sin detalles. Incluye la conectividad a su propia base; no mide integraciones externas todavía inexistentes.
 - MySQL 8.4.8 usa una base, usuario y volumen propios. El puerto local 3309 evita colisiones con catálogo (3308). No se utiliza H2 como sustituto. Flyway gestiona migraciones y Hibernate solo valida. No se crean tablas de negocio ficticias para esta etapa.
 - JWT, propiedad de usuarios, Argon2id, reservas e integración REST/Kafka son trabajo pendiente. No se afirma que la base inicial cumpla todavía esos requisitos.
-- CI, cobertura y SonarCloud se configurarán para este backend con su propia identidad de proyecto; no se reutiliza la clave de Sonar de catálogo.
+- CI y cobertura están configurados con Java 25 y JaCoCo. El envío a SonarCloud usa una clave propia de booking y requiere completar la vinculación y el secreto remoto; no se reutiliza la clave de proyecto de catálogo.
