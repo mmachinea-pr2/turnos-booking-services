@@ -1,1 +1,0 @@
-CREATE TABLE setup_probe (id BIGINT PRIMARY KEY, description VARCHAR(100) NOT NULL);
