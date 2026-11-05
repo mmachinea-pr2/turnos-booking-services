@@ -227,10 +227,14 @@ class BookingApplicationTests {
             for (String origin : java.util.List.of("http://localhost:3000", "https://untrusted.example")) {
                 var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/account"))
                     .header("Origin", origin).header("Access-Control-Request-Method", "GET")
-                    .header("Access-Control-Request-Headers", "Authorization").method("OPTIONS", HttpRequest.BodyPublishers.noBody()).build();
+                    .header("Access-Control-Request-Headers", "Authorization, X-CSRF-TOKEN").method("OPTIONS", HttpRequest.BodyPublishers.noBody()).build();
                 var response = client.send(request, HttpResponse.BodyHandlers.ofString());
                 assertThat(response.statusCode()).isEqualTo(origin.contains("localhost") ? 200 : 403);
-                if (origin.contains("localhost")) assertThat(response.headers().firstValue("Access-Control-Allow-Origin")).contains(origin);
+                if (origin.contains("localhost")) {
+                    assertThat(response.headers().firstValue("Access-Control-Allow-Origin")).contains(origin);
+                    assertThat(response.headers().firstValue("Access-Control-Allow-Credentials")).contains("true");
+                    assertThat(response.headers().firstValue("Access-Control-Allow-Headers").orElse("")).contains("X-CSRF-TOKEN");
+                }
                 else assertThat(response.headers().firstValue("Access-Control-Allow-Origin")).isEmpty();
             }
         }
@@ -271,19 +275,56 @@ class BookingApplicationTests {
         }
     }
 
+    private tools.jackson.databind.JsonNode fetchCsrf(HttpClient client) throws Exception {
+        var response = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/csrf"))
+            .GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.headers().firstValue("Cache-Control").orElse("")).contains("no-store");
+        return json.readTree(response.body());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/register", "/api/authenticate"})
+    void credentialsEndpointsRejectMissingWrongAndOtherSessionCsrf(String path) throws Exception {
+        String name = uniqueLogin();
+        var body = path.endsWith("register") ? registration(name)
+            : java.util.Map.of("username", name, "password", "test-password-123");
+        try (var client = HttpClient.newBuilder().cookieHandler(new java.net.CookieManager()).build();
+             var other = HttpClient.newBuilder().cookieHandler(new java.net.CookieManager()).build()) {
+            var csrf = fetchCsrf(client);
+            var foreign = fetchCsrf(other);
+            for (String token : java.util.List.of("", "invalid", foreign.get("token").asText())) {
+                var builder = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path))
+                    .header("Content-Type", "application/json");
+                if (!token.isEmpty()) builder.header(csrf.get("headerName").asText(), token);
+                var response = client.send(builder.POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build(),
+                    HttpResponse.BodyHandlers.ofString());
+                assertThat(response.statusCode()).isEqualTo(401);
+                assertThat(response.body()).doesNotContain("id_token");
+            }
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM application_user WHERE login = ?", Integer.class, name)).isZero();
+            assertThat(client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/account"))
+                .GET().build(), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(401);
+        }
+    }
+
     private HttpResponse<String> post(String path, Object body) throws Exception {
         return request("POST", path, json.writeValueAsString(body), null);
     }
     private HttpResponse<String> request(String method, String path, String body, String token) throws Exception {
-        try (var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
+        try (var client = HttpClient.newBuilder().cookieHandler(new java.net.CookieManager()).connectTimeout(Duration.ofSeconds(5)).build()) {
             var builder = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).timeout(Duration.ofSeconds(15));
+            if (method.equals("POST") && (path.equals("/api/register") || path.equals("/api/authenticate"))) {
+                var csrf = fetchCsrf(client);
+                builder.header(csrf.get("headerName").asText(), csrf.get("token").asText());
+            }
             if (token != null) builder.header("Authorization", "Bearer " + token);
             if (body != null) builder.header("Content-Type", "application/json");
             return client.send(builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
         }
     }
     private HttpResponse<String> get(String path) throws Exception {
-        try (var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
+        try (var client = HttpClient.newBuilder().cookieHandler(new java.net.CookieManager()).connectTimeout(Duration.ofSeconds(5)).build()) {
             var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path))
                 .timeout(Duration.ofSeconds(5)).GET().build();
             return client.send(request, HttpResponse.BodyHandlers.ofString());

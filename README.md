@@ -113,4 +113,4 @@ Modelo de reservas, protección JWT de catálogo, consultas entre servicios e in
 
 ## Usuarios y seguridad
 
-Registro: POST `/api/register`. Login: POST `/api/authenticate`. Perfil propio: GET `/api/account` con Bearer JWT. Contratos, validaciones, variables y límites: [usuarios y JWT](docs/features/usuarios-jwt/SPEC.md). La salud continúa pública. No usar el token técnico de cátedra para iniciar sesión en booking.
+Antes de registro/login: GET `/api/csrf`, conservar la cookie y enviar el token recibido en `X-CSRF-TOKEN`. Registro: POST `/api/register`. Login: POST `/api/authenticate`. Perfil propio: GET `/api/account` con Bearer JWT. Contratos, validaciones, variables y límites: [usuarios y JWT](docs/features/usuarios-jwt/SPEC.md). La salud continúa pública. No usar el token técnico de cátedra para iniciar sesión en booking.
