@@ -30,10 +30,16 @@ services:
       BOOKING_JWT_AUDIENCE: ${BOOKING_JWT_AUDIENCE:-turnos-backends}
       BOOKING_CORS_ALLOWED_ORIGINS: ${BOOKING_CORS_ALLOWED_ORIGINS:-}
       BOOKING_JWT_TTL: ${BOOKING_JWT_TTL:-30m}
+      BOOKING_CATALOG_BASE_URL: ${BOOKING_DOCKER_CATALOG_BASE_URL:-http://host.docker.internal:8080}
+      BOOKING_CATEDRA_BASE_URL: ${BOOKING_CATEDRA_BASE_URL:-http://172.17.201.1:8090}
+      BOOKING_CATEDRA_TOKEN: ${BOOKING_CATEDRA_TOKEN:-}
+      BOOKING_AVAILABILITY_ZONE: ${BOOKING_AVAILABILITY_ZONE:-America/Argentina/Mendoza}
       BOOKING_APP_HOST: 0.0.0.0
       BOOKING_APP_PORT: 8081
     ports:
       - "127.0.0.1:${BOOKING_APP_PORT:-8081}:8081"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       mysql:
         condition: service_healthy
