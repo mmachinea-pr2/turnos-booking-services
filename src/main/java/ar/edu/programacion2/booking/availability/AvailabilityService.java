@@ -30,7 +30,7 @@ public class AvailabilityService {
         Map<LocalTime, LocalTime> slots = new TreeMap<>();
         for (var schedule : schedules) {
             validateSchedule(schedule, professionalId);
-            if (schedule.dayOfWeek() == date.getDayOfWeek()) addSlots(schedule, slots);
+            if (schedule.dayOfWeek().equals(date.getDayOfWeek())) addSlots(schedule, slots);
         }
         var available = slots.entrySet().stream()
             .filter(slot -> !occupied.contains(slot.getKey()))
