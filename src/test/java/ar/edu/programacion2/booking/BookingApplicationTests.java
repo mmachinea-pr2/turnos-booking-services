@@ -308,6 +308,42 @@ class BookingApplicationTests {
         }
     }
 
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    ar.edu.programacion2.booking.availability.AvailabilitySource availabilitySource;
+
+    @Test
+    void availabilityRequiresJwtAndReturnsComputedSlotsWithoutCaching() throws Exception {
+        assertThat(get("/api/availability?professionalId=15&date=2099-11-09").statusCode()).isEqualTo(401);
+        String name = uniqueLogin(); registerUser(name);
+        String token = login(name);
+        var date = java.time.LocalDate.of(2099,11,9);
+        org.mockito.Mockito.when(availabilitySource.schedules(15,token)).thenReturn(java.util.List.of(
+            new ar.edu.programacion2.booking.availability.AvailabilitySource.Schedule(15L,date.getDayOfWeek(),
+                java.time.LocalTime.of(9,0),java.time.LocalTime.of(10,0),30)));
+        org.mockito.Mockito.when(availabilitySource.occupancies(15,date)).thenReturn(java.util.List.of());
+        var response = request("GET","/api/availability?professionalId=15&date="+date,null,token);
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(response.body()).get("slots").size()).isEqualTo(2);
+        assertThat(response.headers().firstValue("Cache-Control").orElse("")).contains("no-store");
+    }
+
+    @Test
+    void availabilityValidationAndDependencyFailuresHaveSafeErrors() throws Exception {
+        String name = uniqueLogin(); registerUser(name);
+        String token = login(name);
+        for (String query : java.util.List.of("professionalId=0&date=2099-11-09", "professionalId=15&date=2000-01-01",
+                "professionalId=abc&date=2099-11-09", "professionalId=15&date=bad", "professionalId=15")) {
+            var response = request("GET","/api/availability?"+query,null,token);
+            assertThat(response.statusCode()).isEqualTo(400);
+            assertThat(response.body()).contains("INVALID_AVAILABILITY_REQUEST");
+        }
+        org.mockito.Mockito.when(availabilitySource.schedules(15,token))
+            .thenThrow(new ar.edu.programacion2.booking.availability.AvailabilityUnavailableException());
+        var response = request("GET","/api/availability?professionalId=15&date=2099-11-09",null,token);
+        assertThat(response.statusCode()).isEqualTo(503);
+        assertThat(response.body()).contains("AVAILABILITY_UNAVAILABLE").doesNotContain(token,"slots");
+    }
+
     private HttpResponse<String> post(String path, Object body) throws Exception {
         return request("POST", path, json.writeValueAsString(body), null);
     }
