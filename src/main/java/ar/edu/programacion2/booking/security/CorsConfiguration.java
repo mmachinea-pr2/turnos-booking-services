@@ -25,9 +25,9 @@ public class CorsConfiguration {
         var cors = new org.springframework.web.cors.CorsConfiguration();
         cors.setAllowedOrigins(origins);
         cors.setAllowedMethods(List.of("GET", "POST", "OPTIONS"));
-        cors.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        cors.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-CSRF-TOKEN"));
         cors.setExposedHeaders(List.of("Authorization"));
-        cors.setAllowCredentials(false);
+        cors.setAllowCredentials(true);
         var source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", cors);
         return source;

@@ -14,7 +14,6 @@ import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.*;
 import org.springframework.security.oauth2.server.resource.authentication.*;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import static org.springframework.security.config.Customizer.withDefaults;
 
 @Configuration(proxyBeanMethods = false)
@@ -50,16 +49,11 @@ public class SecurityConfiguration {
         authorities.setAuthorityPrefix("");
         var converter = new JwtAuthenticationConverter();
         converter.setJwtGrantedAuthoritiesConverter(authorities);
-        var paths = PathPatternRequestMatcher.withDefaults();
-        // Credentials endpoints do not authenticate through cookies.
-        // Resource Server handles requests authenticated with Authorization: Bearer.
-        return http.csrf(csrf -> csrf.ignoringRequestMatchers(
-                paths.matcher(HttpMethod.POST, "/api/register"),
-                paths.matcher(HttpMethod.POST, "/api/authenticate")))
+        return http.csrf(withDefaults())
             .cors(withDefaults())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(access -> access
-                .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
+                .requestMatchers(HttpMethod.GET, "/actuator/health", "/api/csrf").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/register", "/api/authenticate").permitAll()
                 .anyRequest().hasRole("USER"))
             .oauth2ResourceServer(resource -> resource.jwt(jwt -> jwt.jwtAuthenticationConverter(converter)))

@@ -29,7 +29,19 @@ Responde 200 con `{"id_token":"..."}` y cabecera `Authorization: Bearer ...`. Ca
 
 Requiere `Authorization: Bearer <JWT>`. Devuelve exclusivamente el usuario identificado por `sub`, activo y presente en la base. No acepta un identificador de usuario para seleccionar otra cuenta. La propiedad de futuras reservas se implementará usando este identificador autenticado; todavía no existen endpoints de reservas.
 
-Salud GET /actuator/health permanece pública. Los demás endpoints requieren ROLE_USER. Token ausente, alterado, vencido, de otra clave/emisor/audiencia o con claims inválidos: 401; token válido sin ROLE_USER: 403. La aplicación es stateless: no usa cookies, sesión, HTTP Basic ni formulario de login. CSRF permanece activo. Solo POST /api/register y POST /api/authenticate tienen excepciones explícitas porque reciben credenciales y no autentican por cookies. Spring Resource Server exceptúa las solicitudes con Authorization: Bearer, cuyo JWT valida antes de permitir acceso. Las solicitudes protegidas sin autenticación, incluidas escrituras sin Bearer ni token CSRF, reciben 401 mediante el manejador de Resource Server.
+Salud GET /actuator/health y GET /api/csrf permanecen públicas, junto con los POST de registro/login. El resto requiere ROLE_USER y JWT válido. No se usa HTTP Basic ni formulario de login. La identidad no se guarda en sesión: la cookie de sesión utilizada para CSRF no autentica al usuario.
+
+### CSRF antes de registro y login
+
+CSRF permanece activo sin excepciones explícitas por ruta. Antes de POST /api/register o POST /api/authenticate:
+
+1. Consultar GET /api/csrf. Responde `{ "headerName": "X-CSRF-TOKEN", "token": "..." }` con Cache-Control: no-store y una cookie de sesión para asociar el token.
+2. Conservar esa cookie y enviar el valor `token` en la cabecera indicada por `headerName`, además de Content-Type: application/json.
+3. Iniciar sesión devuelve el JWT habitual. Usarlo como Authorization: Bearer para las consultas protegidas. La cookie CSRF no sustituye al JWT.
+
+En Postman, hacer primero GET `http://localhost:8081/api/csrf`; su gestor de cookies conserva JSESSIONID. Copiar el campo token a la cabecera X-CSRF-TOKEN del POST de registro o login, usando el mismo host. No copiar un token de otra sesión. Si la sesión vence o el servidor reinicia, obtener uno nuevo. KMP deberá mantener el gestor de cookies durante este intercambio.
+
+Spring Resource Server conserva su manejo estándar para solicitudes con Authorization: Bearer. Un JWT inválido devuelve 401 y uno sin ROLE_USER devuelve 403. Las solicitudes anónimas con CSRF ausente/incorrecto son rechazadas con 401 por el manejador de Resource Server antes de ejecutar registro/login.
 
 ## Contraseñas y persistencia
 
@@ -55,12 +67,12 @@ Al integrar catálogo se propagará el JWT del usuario. Catálogo deberá valida
 
 ## CORS y transporte
 
-BOOKING_CORS_ALLOWED_ORIGINS vacío por defecto: no habilita clientes web de otros orígenes. Para un cliente web autorizado se configura una lista separada por comas de orígenes exactos, por ejemplo `http://localhost:3000`. No admite comodines ni URLs con paths. Permite GET/POST/OPTIONS y cabeceras Authorization/Content-Type, sin cookies. KMP nativo no requiere habilitar CORS.
+BOOKING_CORS_ALLOWED_ORIGINS vacío por defecto: no habilita clientes web de otros orígenes. Para un cliente web autorizado se configura una lista separada por comas de orígenes exactos, por ejemplo `http://localhost:3000`. No admite comodines ni URLs con paths. Permite GET/POST/OPTIONS y cabeceras Authorization/Content-Type/X-CSRF-TOKEN. Los orígenes explícitos autorizados pueden enviar la cookie CSRF (credentials: include); no se permiten comodines. KMP nativo no requiere habilitar CORS.
 
 HTTP queda limitado al entorno local de desarrollo. Para exponer usuarios fuera de ese entorno debe configurarse HTTPS en el punto de entrada; no se implementa TLS en este contenedor. Rate limiting para login/registro queda pendiente para una exposición pública. No se implementan recuperación de contraseña, administración de usuarios ni revocación global inmediata en catálogo.
 
 ## Verificación
 
-`./mvnw -B -ntp clean verify` usa MySQL temporal y una clave exclusiva de pruebas. Cubre registro, validación, hash Argon2id, normalización, duplicados concurrentes, campos administrados por servidor, login, cuenta propia, fallos homogéneos, expiración y firma JWT, permisos, CORS, ausencia de sesiones y configuración inválida.
+`./mvnw -B -ntp clean verify` usa MySQL temporal y una clave exclusiva de pruebas. Cubre registro, validación, hash Argon2id, normalización, duplicados concurrentes, campos administrados por servidor, login, cuenta propia, fallos homogéneos, expiración y firma JWT, permisos, CORS, cookie CSRF sin identidad autenticada, tokens CSRF ausentes/incorrectos/de otra sesión y configuración inválida.
 
 Referencia del mecanismo JWT: [Spring Security Resource Server](https://docs.spring.io/spring-security/reference/servlet/oauth2/resource-server/jwt.html).
