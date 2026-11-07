@@ -1,11 +1,9 @@
 package ar.edu.programacion2.booking.availability;
 
-import java.net.URI;
 import java.time.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 @Configuration(proxyBeanMethods = false)
@@ -20,21 +18,7 @@ public class AvailabilityConfiguration {
         return new RestAvailabilitySource(client(catalog), client(catedra), token);
     }
     private RestClient client(String baseUrl) {
-        var uri = URI.create(baseUrl);
-        if (!("http".equals(uri.getScheme()) || "https".equals(uri.getScheme())) || uri.getHost() == null
-                || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null) {
-            throw new IllegalArgumentException("Invalid integration base URL");
-        }
-        var factory = new SimpleClientHttpRequestFactory() {
-            @Override protected void prepareConnection(java.net.HttpURLConnection connection, String method)
-                    throws java.io.IOException {
-                super.prepareConnection(connection, method);
-                connection.setInstanceFollowRedirects(false);
-            }
-        };
-        factory.setConnectTimeout(Duration.ofSeconds(3));
-        factory.setReadTimeout(Duration.ofSeconds(5));
-        return RestClient.builder().baseUrl(baseUrl).requestFactory(factory)
+        return ar.edu.programacion2.booking.integration.IntegrationHttpClient.builder(baseUrl)
             .defaultStatusHandler(status -> !status.is2xxSuccessful(), (request, response) -> {
                 throw new AvailabilityUnavailableException();
             }).build();
