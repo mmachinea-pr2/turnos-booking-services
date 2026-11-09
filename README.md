@@ -122,3 +122,7 @@ GET `/api/availability?professionalId=15&date=2026-11-09` con JWT de usuario. Co
 ### Bloqueos temporales de turnos
 
 POST `/api/appointment-holds` crea un hold para el usuario autenticado con una clave `requestId` UUID. GET `/api/reservation-processes/{id}` permite consultar exclusivamente sus procesos. Los reintentos conservan la misma clave; una respuesta incierta no provoca otro POST remoto. Ver [contrato, estados y recuperación](docs/features/holds/SPEC.md). La creación de un hold aún no confirma una reserva.
+
+### Confirmación inicial
+
+POST `/api/reservation-processes/{id-local}/confirm` con JWT propio, patientFirstName y patientLastName inicia la confirmación de un hold vigente del usuario. El resultado WAITING_FOR_PHONE espera el intercambio por Kafka; todavía no es una reserva confirmada. Ver [contrato, reintentos y estados](docs/features/confirmacion-holds/SPEC.md).
