@@ -101,11 +101,11 @@ Se genera `target/turnos-booking-services-0.0.1-SNAPSHOT.jar`, ejecutable con `j
 
 ## Migraciones
 
-Flyway está habilitado y Hibernate utiliza `validate`, nunca `create` ni `update`. Las migraciones de `src/main/resources/db/migration` crean usuarios (V1), procesos de reserva (V2), datos de confirmación (V3) e inbox de eventos (V4). Las pruebas aplican esas mismas migraciones sobre MySQL temporal.
+Flyway está habilitado y Hibernate utiliza `validate`, nunca `create` ni `update`. Las migraciones de `src/main/resources/db/migration` crean usuarios (V1), procesos de reserva (V2), datos de confirmación (V3) e inbox de eventos (V4) y envíos de teléfono pendientes (V5). Las pruebas aplican esas mismas migraciones sobre MySQL temporal.
 
 ## Pendientes
 
-Protección JWT de catálogo, envío de teléfono, resultados finales y reconciliación de reservas pendientes.
+Protección JWT de catálogo, resultados finales y reconciliación de reservas pendientes.
 
 ## CI y cobertura
 
@@ -133,5 +133,12 @@ El consumidor guarda `AdditionalInformationRequested` en MySQL y actualiza el pr
 sin repetir efectos ante duplicados. GET `/api/reservation-processes/{id-local}/phone-request`
 devuelve la última solicitud al propietario autenticado (204 si todavía no llegó).
 Kafka está desactivado por defecto; habilitar `BOOKING_KAFKA_ENABLED=true` con ZeroTier
-conectado. Otros eventos quedan guardados para el siguiente bloque, que implementará
-el envío del teléfono y los resultados finales. Ver [configuración y comportamiento](docs/features/solicitud-telefono/SPEC.md).
+conectado. Los eventos finales quedan guardados para su procesamiento en el siguiente bloque. Ver [configuración y comportamiento](docs/features/solicitud-telefono/SPEC.md).
+
+### Envío del teléfono
+
+POST `/api/reservation-processes/{id-local}/phone` recibe `requestEventId` y `phoneNumber`
+con JWT propio. Guarda el evento antes de publicarlo por Kafka y reintenta los fallos
+conservando su identificador. GET `/api/reservation-processes/{id-local}/phone-submission`
+permite consultar la entrega. `PUBLISHED` confirma recepción en Kafka, no la reserva.
+Requiere Kafka habilitado para publicar; ver [contrato, configuración y recuperación](docs/features/enviar-telefono/SPEC.md).
