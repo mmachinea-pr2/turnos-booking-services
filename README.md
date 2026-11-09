@@ -95,17 +95,17 @@ Para probar en otro puerto sin detener otra aplicación, usar `BOOKING_APP_PORT=
 ./mvnw -B -ntp clean verify
 ```
 
-Las pruebas usan un contenedor MySQL temporal y un puerto HTTP aleatorio; no leen la base de desarrollo ni requieren credenciales de cátedra. Verifican salud, migración real de usuarios, registro, autenticación, autorización y validación JWT/CORS. La clave de pruebas no es una credencial de desarrollo.
+Las pruebas usan contenedores MySQL y Kafka temporales y un puerto HTTP aleatorio; no leen la base de desarrollo ni requieren credenciales de cátedra. Verifican migraciones, salud, autenticación, autorización JWT/CORS, disponibilidad, holds, confirmación y recepción de eventos Kafka. La clave de pruebas no es una credencial de desarrollo.
 
 Se genera `target/turnos-booking-services-0.0.1-SNAPSHOT.jar`, ejecutable con `java -jar` después de exportar la configuración de base.
 
 ## Migraciones
 
-Flyway está habilitado y Hibernate utiliza `validate`, nunca `create` ni `update`. La migración V1 de `src/main/resources/db/migration` crea usuarios propios de booking. Las pruebas usan esta misma migración sobre MySQL temporal; se retiró setup_probe de los recursos de test.
+Flyway está habilitado y Hibernate utiliza `validate`, nunca `create` ni `update`. Las migraciones de `src/main/resources/db/migration` crean usuarios (V1), procesos de reserva (V2), datos de confirmación (V3) e inbox de eventos (V4). Las pruebas aplican esas mismas migraciones sobre MySQL temporal.
 
 ## Pendientes
 
-Modelo de reservas, protección JWT de catálogo, consultas entre servicios e integraciones REST/Kafka pendientes.
+Protección JWT de catálogo, envío de teléfono, resultados finales y reconciliación de reservas pendientes.
 
 ## CI y cobertura
 
@@ -122,3 +122,16 @@ GET `/api/availability?professionalId=15&date=2026-11-09` con JWT de usuario. Co
 ### Bloqueos temporales de turnos
 
 POST `/api/appointment-holds` crea un hold para el usuario autenticado con una clave `requestId` UUID. GET `/api/reservation-processes/{id}` permite consultar exclusivamente sus procesos. Los reintentos conservan la misma clave; una respuesta incierta no provoca otro POST remoto. Ver [contrato, estados y recuperación](docs/features/holds/SPEC.md). La creación de un hold aún no confirma una reserva.
+
+### Confirmación inicial
+
+POST `/api/reservation-processes/{id-local}/confirm` con JWT propio, patientFirstName y patientLastName inicia la confirmación de un hold vigente del usuario. El resultado WAITING_FOR_PHONE espera el intercambio por Kafka; todavía no es una reserva confirmada. Ver [contrato, reintentos y estados](docs/features/confirmacion-holds/SPEC.md).
+
+### Solicitudes de teléfono por Kafka
+
+El consumidor guarda `AdditionalInformationRequested` en MySQL y actualiza el proceso
+sin repetir efectos ante duplicados. GET `/api/reservation-processes/{id-local}/phone-request`
+devuelve la última solicitud al propietario autenticado (204 si todavía no llegó).
+Kafka está desactivado por defecto; habilitar `BOOKING_KAFKA_ENABLED=true` con ZeroTier
+conectado. Otros eventos quedan guardados para el siguiente bloque, que implementará
+el envío del teléfono y los resultados finales. Ver [configuración y comportamiento](docs/features/solicitud-telefono/SPEC.md).

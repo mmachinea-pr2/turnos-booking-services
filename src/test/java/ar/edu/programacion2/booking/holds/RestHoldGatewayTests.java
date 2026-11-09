@@ -22,11 +22,13 @@ class RestHoldGatewayTests {
     final AtomicInteger calls=new AtomicInteger();
     final AtomicReference<String> body=new AtomicReference<>();
     final AtomicReference<String> auth=new AtomicReference<>();
+    final AtomicReference<String> path=new AtomicReference<>();
     final CreateHoldRequest request=new CreateHoldRequest(UUID.randomUUID(),15,LocalDate.of(2026,11,9),LocalTime.of(9,0));
     @BeforeEach void start() throws Exception {
         server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
         server.createContext("/api/appointment-holds",exchange -> {
             calls.incrementAndGet();
+            path.set(exchange.getRequestURI().getPath());
             body.set(new String(exchange.getRequestBody().readAllBytes(),StandardCharsets.UTF_8));
             auth.set(exchange.getRequestHeaders().getFirst("Authorization"));
             if (dropResponse) {
@@ -103,6 +105,77 @@ class RestHoldGatewayTests {
         assertThat(gateway.create(request,"owner")).isEqualTo(HoldGateway.Outcome.uncertain());
         assertThat(calls.get()).isEqualTo(1);
         assertThat(body.get()).contains("externalPatientId");
+    }
+    private ReservationProcess process() {
+        return new ReservationProcess("local-id",UUID.randomUUID().toString(),15,LocalDate.of(2026,11,9),
+            LocalTime.of(9,0),ReservationProcess.Status.CONFIRMING,"hold-1","process-1",Instant.now().plusSeconds(60),null);
+    }
+    private HoldGateway.Outcome confirm() {
+        return gateway.confirm(process(),new ConfirmHoldRequest(" Ana "," Perez "),"owner-id");
+    }
+    private void confirmedResponse() {
+        status=202;
+        response="{\"reservationProcessId\":\"process-1\",\"status\":\"WAITING_FOR_PHONE\",\"expiresAt\":\"2026-11-07T15:00:00Z\"}";
+    }
+    @Test void confirmationSendsOwnerAndNamesAndValidatesRemoteProcess() {
+        confirmedResponse();
+        var result=confirm();
+        assertThat(result.status()).isEqualTo(ReservationProcess.Status.WAITING_FOR_PHONE);
+        assertThat(result.holdId()).isEqualTo("hold-1");
+        assertThat(result.processId()).isEqualTo("process-1");
+        assertThat(result.expiresAt()).isEqualTo(Instant.parse("2026-11-07T15:00:00Z"));
+        assertThat(path.get()).isEqualTo("/api/appointment-holds/hold-1/confirm");
+        assertThat(auth.get()).isEqualTo("Bearer technical-token");
+        assertThat(body.get()).contains("\"externalPatientId\":\"owner-id\"","\"patientFirstName\":\"Ana\"","\"patientLastName\":\"Perez\"");
+        assertThat(calls.get()).isEqualTo(1);
+    }
+    @ParameterizedTest @ValueSource(strings={"INVALID_SLOT","EXTERNAL_PATIENT_MISMATCH","VALIDATION_ERROR"})
+    void confirmationRecognizesDefinitiveBadRequest(String code) {
+        status=400; response="{\"code\":\""+code+"\"}";
+        assertThat(confirm()).isEqualTo(HoldGateway.Outcome.rejected(code));
+    }
+    @Test void confirmationRecognizesExpirationAndDefinitiveConflicts() {
+        status=404; response="{\"code\":\"HOLD_EXPIRED\"}";
+        assertThat(confirm().status()).isEqualTo(ReservationProcess.Status.EXPIRED);
+        response="{\"code\":\"PROFESSIONAL_NOT_FOUND\"}";
+        assertThat(confirm()).isEqualTo(HoldGateway.Outcome.rejected("PROFESSIONAL_NOT_FOUND"));
+        status=409; response="{\"code\":\"SLOT_ALREADY_RESERVED\"}";
+        assertThat(confirm()).isEqualTo(HoldGateway.Outcome.rejected("SLOT_ALREADY_RESERVED"));
+    }
+    @ParameterizedTest @ValueSource(strings={"not-json","null","{}","{\"code\":123}",
+        "{\"code\":\"HOLD_NOT_FOUND\"}","{\"code\":\"RESERVATION_PROCESS_ALREADY_CONFIRMED\"}"})
+    void ambiguousConfirmationErrorsAreNotTreatedAsRejections(String value) {
+        status=409; response=value;
+        assertThat(confirm()).isEqualTo(HoldGateway.Outcome.confirmationUncertain());
+        assertThat(calls.get()).isEqualTo(1);
+    }
+    @ParameterizedTest @ValueSource(ints={200,201,302,401,403,429,500,503})
+    void unexpectedConfirmationStatusIsUncertain(int code) {
+        confirmedResponse(); status=code;
+        assertThat(confirm()).isEqualTo(HoldGateway.Outcome.confirmationUncertain());
+        assertThat(calls.get()).isEqualTo(1);
+    }
+    @ParameterizedTest @ValueSource(strings={"not-json","null","{}",
+        "{\"reservationProcessId\":\"another\",\"status\":\"WAITING_FOR_PHONE\",\"expiresAt\":\"2026-11-07T15:00:00Z\"}",
+        "{\"reservationProcessId\":\"process-1\",\"status\":\"CONFIRMED\",\"expiresAt\":\"2026-11-07T15:00:00Z\"}",
+        "{\"reservationProcessId\":\"process-1\",\"status\":\"WAITING_FOR_PHONE\"}"})
+    void incompleteConfirmationSuccessIsUncertain(String value) {
+        status=202; response=value;
+        assertThat(confirm()).isEqualTo(HoldGateway.Outcome.confirmationUncertain());
+    }
+    @Test void lostConfirmationResponseIsNotRetried() {
+        dropResponse=true;
+        assertThat(confirm()).isEqualTo(HoldGateway.Outcome.confirmationUncertain());
+        assertThat(calls.get()).isEqualTo(1);
+    }
+    @Test void missingConfirmationCredentialMakesNoRequest() {
+        gateway=new RestHoldGateway(url,"");
+        assertThat(confirm()).isEqualTo(HoldGateway.Outcome.confirmationUncertain());
+        assertThat(calls.get()).isZero();
+    }
+    @Test void confirmationConnectionFailureIsUncertain() {
+        server.stop(0);
+        assertThat(confirm()).isEqualTo(HoldGateway.Outcome.confirmationUncertain());
     }
     @Test void connectionFailureRemainsUncertain() {
         server.stop(0);
