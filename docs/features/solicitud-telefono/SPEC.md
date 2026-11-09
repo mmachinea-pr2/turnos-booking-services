@@ -81,5 +81,6 @@ Las pruebas usan MySQL y Kafka temporales en Docker y un servidor HTTP local par
 las integraciones REST. No producen reservas ni eventos en el servidor de cátedra.
 La verificación real contra ese servidor sigue pendiente.
 
-Este bloque recibe la solicitud. El envío de AdditionalInformationSubmitted y el
-procesamiento de confirmación/rechazo/expiración finales corresponden al siguiente bloque.
+Este bloque recibe la solicitud. El envío de AdditionalInformationSubmitted se implementa
+en la [issue #18](../enviar-telefono/SPEC.md). El procesamiento de los resultados
+finales sigue pendiente.
