@@ -1,0 +1,20 @@
+CREATE TABLE reservation_process (
+    id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+    user_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    request_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    professional_id BIGINT NOT NULL,
+    appointment_date DATE NOT NULL,
+    start_time TIME NOT NULL,
+    status VARCHAR(24) NOT NULL,
+    hold_id VARCHAR(100) COLLATE utf8mb4_bin,
+    remote_process_id VARCHAR(100) COLLATE utf8mb4_bin,
+    expires_at TIMESTAMP(6) NULL,
+    error_code VARCHAR(60),
+    created_at TIMESTAMP(6) NOT NULL,
+    updated_at TIMESTAMP(6) NOT NULL,
+    CONSTRAINT fk_reservation_process_user FOREIGN KEY (user_id) REFERENCES application_user(id),
+    CONSTRAINT uk_reservation_request UNIQUE (user_id, request_id),
+    CONSTRAINT uk_reservation_hold UNIQUE (hold_id),
+    CONSTRAINT uk_reservation_remote_process UNIQUE (remote_process_id),
+    INDEX ix_reservation_user_slot (user_id, professional_id, appointment_date, start_time)
+);

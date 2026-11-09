@@ -42,7 +42,7 @@ class BookingApplicationTests {
     @Test
     void flywayCreatesUserSchema() {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1", Integer.class))
-            .isEqualTo(1);
+            .isEqualTo(2);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'application_user'", Integer.class))
             .isEqualTo(1);
     }
@@ -342,6 +342,201 @@ class BookingApplicationTests {
         var response = request("GET","/api/availability?professionalId=15&date=2099-11-09",null,token);
         assertThat(response.statusCode()).isEqualTo(503);
         assertThat(response.body()).contains("AVAILABILITY_UNAVAILABLE").doesNotContain(token,"slots");
+    }
+
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    ar.edu.programacion2.booking.holds.HoldGateway holdGateway;
+
+    private java.util.Map<String,Object> holdBody() {
+        return new java.util.HashMap<>(java.util.Map.of("requestId",java.util.UUID.randomUUID().toString(),
+            "professionalId",15,"date","2099-11-09","startTime","09:00:00"));
+    }
+    private String holdUser() throws Exception {
+        String name=uniqueLogin(); registerUser(name);
+        String token=login(name);
+        var date=java.time.LocalDate.of(2099,11,9);
+        org.mockito.Mockito.when(availabilitySource.schedules(15,token)).thenReturn(java.util.List.of(
+            new ar.edu.programacion2.booking.availability.AvailabilitySource.Schedule(15L,date.getDayOfWeek(),
+                java.time.LocalTime.of(9,0),java.time.LocalTime.of(10,0),30)));
+        org.mockito.Mockito.when(availabilitySource.occupancies(15,date)).thenReturn(java.util.List.of());
+        return token;
+    }
+    private ar.edu.programacion2.booking.holds.HoldGateway.Outcome held() {
+        String suffix=java.util.UUID.randomUUID().toString();
+        return new ar.edu.programacion2.booking.holds.HoldGateway.Outcome(
+            ar.edu.programacion2.booking.holds.ReservationProcess.Status.HELD,"hold-"+suffix,"process-"+suffix,
+            java.time.Instant.now().plusSeconds(120),null);
+    }
+    private HttpResponse<String> createHold(java.util.Map<String,Object> body,String token) throws Exception {
+        return request("POST","/api/appointment-holds",json.writeValueAsString(body),token);
+    }
+
+    @Test
+    void holdPersistsOwnerAndIdsAndSameRequestIsIdempotent() throws Exception {
+        String token=holdUser();
+        String owner=json.readTree(request("GET","/api/account",null,token).body()).get("id").asText();
+        var body=holdBody(); body.put("externalPatientId","forged"); body.put("userId","forged");
+        var remote=held();
+        org.mockito.Mockito.when(holdGateway.create(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.eq(owner)))
+            .thenAnswer(call -> {
+                assertThat(jdbc.queryForObject("SELECT status FROM reservation_process WHERE user_id = ? AND request_id = ?",
+                    String.class,owner,body.get("requestId"))).isEqualTo("CREATING");
+                return remote;
+            });
+        var first=createHold(body,token);
+        assertThat(first.statusCode()).isEqualTo(201);
+        var process=json.readTree(first.body());
+        String id=process.get("id").asText();
+        assertThat(process.get("holdId").asText()).isEqualTo(remote.holdId());
+        assertThat(process.get("reservationProcessId").asText()).isEqualTo(remote.processId());
+        assertThat(first.headers().firstValue("Location")).contains("/api/reservation-processes/"+id);
+        assertThat(first.headers().firstValue("Cache-Control").orElse("")).contains("no-store");
+        var repeat=createHold(body,token);
+        assertThat(repeat.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(repeat.body()).get("id").asText()).isEqualTo(id);
+        org.mockito.Mockito.verify(holdGateway,org.mockito.Mockito.times(1)).create(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.eq(owner));
+        assertThat(request("GET","/api/reservation-processes/"+id,null,token).statusCode()).isEqualTo(200);
+        String other=holdUser();
+        assertThat(request("GET","/api/reservation-processes/"+id,null,other).statusCode()).isEqualTo(404);
+        assertThat(request("GET","/api/reservation-processes/"+java.util.UUID.randomUUID(),null,other).statusCode()).isEqualTo(404);
+        assertThat(get("/api/reservation-processes/"+id).statusCode()).isEqualTo(401);
+        body.put("startTime","09:30:00");
+        assertThat(createHold(body,token).body()).contains("REQUEST_ID_REUSED");
+    }
+
+    @Test
+    void uncertainResultIsPersistedAndNeverResubmittedEvenWithNewRequestId() throws Exception {
+        String token=holdUser(); var body=holdBody();
+        org.mockito.Mockito.when(holdGateway.create(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString()))
+            .thenReturn(ar.edu.programacion2.booking.holds.HoldGateway.Outcome.uncertain());
+        var response=createHold(body,token);
+        assertThat(response.statusCode()).isEqualTo(202);
+        assertThat(response.body()).contains("UNCERTAIN","REMOTE_RESULT_UNKNOWN");
+        assertThat(createHold(body,token).statusCode()).isEqualTo(202);
+        var different=createHold(holdBody(),token);
+        assertThat(different.statusCode()).isEqualTo(409);
+        assertThat(different.body()).contains("PROCESS_ALREADY_PENDING");
+        org.mockito.Mockito.verify(holdGateway,org.mockito.Mockito.times(1)).create(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void definitiveRejectionIsStoredAndReplayed() throws Exception {
+        String token=holdUser(); var body=holdBody();
+        org.mockito.Mockito.when(holdGateway.create(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString()))
+            .thenReturn(ar.edu.programacion2.booking.holds.HoldGateway.Outcome.rejected("SLOT_ALREADY_HELD"));
+        var response=createHold(body,token);
+        assertThat(response.statusCode()).isEqualTo(409);
+        assertThat(response.body()).contains("REJECTED","SLOT_ALREADY_HELD");
+        assertThat(createHold(body,token).statusCode()).isEqualTo(409);
+        org.mockito.Mockito.verify(holdGateway,org.mockito.Mockito.times(1)).create(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void expiredHoldRemainsExpiredOnReadAndReplay() throws Exception {
+        String token=holdUser(); var body=holdBody();
+        org.mockito.Mockito.when(holdGateway.create(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString())).thenReturn(held());
+        var created=createHold(body,token);
+        String id=json.readTree(created.body()).get("id").asText();
+        jdbc.update("UPDATE reservation_process SET expires_at = ? WHERE id = ?",java.sql.Timestamp.from(java.time.Instant.now().minusSeconds(1)),id);
+        var expired=request("GET","/api/reservation-processes/"+id,null,token);
+        assertThat(expired.statusCode()).isEqualTo(200);
+        assertThat(expired.body()).contains("EXPIRED");
+        assertThat(createHold(body,token).body()).contains("EXPIRED");
+        assertThat(jdbc.queryForObject("SELECT status FROM reservation_process WHERE id = ?",String.class,id)).isEqualTo("EXPIRED");
+        org.mockito.Mockito.verify(holdGateway,org.mockito.Mockito.times(1)).create(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void invalidOrUnavailableSlotDoesNotCallHoldEndpoint() throws Exception {
+        String token=holdUser();
+        var invalid=holdBody(); invalid.put("startTime","09:15:00");
+        var unavailable=createHold(invalid,token);
+        assertThat(unavailable.statusCode()).isEqualTo(409);
+        assertThat(unavailable.body()).contains("SLOT_UNAVAILABLE");
+        for (String field : java.util.List.of("requestId","professionalId","date","startTime")) {
+            var body=holdBody(); body.remove(field);
+            assertThat(createHold(body,token).statusCode()).isEqualTo(400);
+        }
+        var fraction=holdBody(); fraction.put("startTime","09:00:00.123");
+        assertThat(createHold(fraction,token).statusCode()).isEqualTo(400);
+        assertThat(request("POST","/api/appointment-holds","{invalid",token).statusCode()).isEqualTo(400);
+        assertThat(request("GET","/api/reservation-processes/not-uuid",null,token).statusCode()).isEqualTo(400);
+        org.mockito.Mockito.verifyNoInteractions(holdGateway);
+    }
+
+    @Test
+    void inactiveUserCannotCreateOrReadProcesses() throws Exception {
+        String token=holdUser();
+        String id=json.readTree(request("GET","/api/account",null,token).body()).get("id").asText();
+        jdbc.update("UPDATE application_user SET activated = false WHERE id = ?",id);
+        assertThat(createHold(holdBody(),token).statusCode()).isEqualTo(401);
+        assertThat(request("GET","/api/reservation-processes/"+java.util.UUID.randomUUID(),null,token).statusCode()).isEqualTo(401);
+        org.mockito.Mockito.verifyNoInteractions(holdGateway);
+    }
+
+    @Test
+    void parallelSameRequestCallsRemoteOnceAndExposesInFlightProcess() throws Exception {
+        String token=holdUser(); var body=holdBody();
+        var entered=new java.util.concurrent.CountDownLatch(1);
+        var release=new java.util.concurrent.CountDownLatch(1);
+        org.mockito.Mockito.when(holdGateway.create(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString()))
+            .thenAnswer(call -> { entered.countDown(); assertThat(release.await(10,java.util.concurrent.TimeUnit.SECONDS)).isTrue(); return held(); });
+        try (var executor=java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            var first=executor.submit(() -> createHold(body,token));
+            try {
+                assertThat(entered.await(10,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                var repeat=createHold(body,token);
+                assertThat(repeat.statusCode()).isEqualTo(202);
+                assertThat(repeat.body()).contains("CREATING");
+            } finally { release.countDown(); }
+            assertThat(first.get().statusCode()).isEqualTo(201);
+        }
+        org.mockito.Mockito.verify(holdGateway,org.mockito.Mockito.times(1)).create(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void databaseFailureAfterRemoteSuccessLeavesDurableIntentWithoutRetry() throws Exception {
+        String first=holdUser(); String second=holdUser(); var body=holdBody();
+        org.mockito.Mockito.when(holdGateway.create(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString())).thenReturn(held());
+        assertThat(createHold(holdBody(),first).statusCode()).isEqualTo(201);
+        assertThat(createHold(body,second).statusCode()).isEqualTo(503);
+        var replay=createHold(body,second);
+        assertThat(replay.statusCode()).isEqualTo(202);
+        assertThat(replay.body()).contains("CREATING");
+        org.mockito.Mockito.verify(holdGateway,org.mockito.Mockito.times(2)).create(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false,true})
+    void simultaneousFirstAttemptsSerializeRequestClaimInDatabase(boolean changedSlot) throws Exception {
+        String token=holdUser();
+        var firstBody=holdBody();
+        var secondBody=new java.util.HashMap<>(firstBody);
+        if (changedSlot) secondBody.put("startTime","09:30:00");
+        var schedules=availabilitySource.schedules(15,token);
+        var bothValidating=new java.util.concurrent.CountDownLatch(2);
+        org.mockito.Mockito.when(availabilitySource.schedules(15,token)).thenAnswer(call -> {
+            bothValidating.countDown();
+            assertThat(bothValidating.await(10,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            return schedules;
+        });
+        org.mockito.Mockito.when(holdGateway.create(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString())).thenReturn(held());
+        try (var executor=java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var first=executor.submit(() -> createHold(firstBody,token));
+            var second=executor.submit(() -> createHold(secondBody,token));
+            var results=java.util.List.of(first.get(),second.get());
+            assertThat(results.stream().filter(r -> r.statusCode()==201).count()).isEqualTo(1);
+            var other=results.stream().filter(r -> r.statusCode()!=201).findFirst().orElseThrow();
+            if (changedSlot) {
+                assertThat(other.statusCode()).isEqualTo(409);
+                assertThat(other.body()).contains("REQUEST_ID_REUSED");
+            } else {
+                assertThat(other.statusCode()).isIn(200,202);
+                assertThat(json.readTree(results.getFirst().body()).get("id").asText())
+                    .isEqualTo(json.readTree(results.getLast().body()).get("id").asText());
+            }
+        }
+        org.mockito.Mockito.verify(holdGateway,org.mockito.Mockito.times(1)).create(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString());
     }
 
     private HttpResponse<String> post(String path, Object body) throws Exception {
