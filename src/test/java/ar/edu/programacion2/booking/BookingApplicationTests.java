@@ -42,7 +42,7 @@ class BookingApplicationTests {
     @Test
     void flywayCreatesUserSchema() {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1", Integer.class))
-            .isEqualTo(4);
+            .isEqualTo(5);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'application_user'", Integer.class))
             .isEqualTo(1);
     }
@@ -791,5 +791,161 @@ class BookingApplicationTests {
         }
         assertThat(inboxState(event.eventId())).isEqualTo("APPLIED");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM booking_event_inbox WHERE event_id = ?",Integer.class,event.eventId())).isEqualTo(1);
+    }
+
+    @Autowired ar.edu.programacion2.booking.phone.PhoneSubmissionOutbox phoneOutbox;
+
+    private String requestedPhone(String id) {
+        jdbc.update("UPDATE reservation_process SET status = 'CONFIRMING' WHERE id = ?",id);
+        var event=phoneEvent(id,java.util.UUID.randomUUID().toString(),"2030-01-01T10:00:00Z");
+        bookingInbox.receive(event);
+        return event.eventId();
+    }
+    private HttpResponse<String> submitPhone(String token,String id,String requestId,String phone) throws Exception {
+        return request("POST","/api/reservation-processes/"+id+"/phone",json.writeValueAsString(java.util.Map.of(
+            "requestEventId",requestId,"phoneNumber",phone,"externalPatientId","forged","groupId","forged")),token);
+    }
+    private String submissionEvent(HttpResponse<String> response) {
+        assertThat(response.statusCode()).isEqualTo(202);
+        return json.readTree(response.body()).path("eventId").asString();
+    }
+    @Test
+    void phoneSubmissionPersistsContractBeforePublicationAndReplaysNormalizedNumber() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token); String requestId=requestedPhone(id);
+        assertThat(request("GET","/api/reservation-processes/"+id+"/phone-submission",null,token).statusCode()).isEqualTo(204);
+        var response=submitPhone(token,id,requestId,"+54 (9261) 555-12.34");
+        String eventId=submissionEvent(response);
+        assertThat(response.body()).contains("PENDING").doesNotContain("555","forged");
+        assertThat(response.headers().firstValue("Location")).contains("/api/reservation-processes/"+id+"/phone-submission");
+        assertThat(response.headers().firstValue("Cache-Control").orElse("")).contains("no-store");
+        var payload=json.readTree(jdbc.queryForObject("SELECT payload FROM phone_submission_outbox WHERE event_id = ?",String.class,eventId));
+        assertThat(payload.path("eventType").asString()).isEqualTo("AdditionalInformationSubmitted");
+        assertThat(payload.path("eventId").asString()).isEqualTo(eventId);
+        assertThat(payload.path("requestEventId").asString()).isEqualTo(requestId);
+        assertThat(payload.path("groupId").asString()).isEqualTo("proyecto-pilar-machinea");
+        assertThat(payload.path("information").path("phoneNumber").asString()).isEqualTo("+5492615551234");
+        assertThat(payload.path("schemaVersion").asInt()).isEqualTo(1);
+        assertThat(payload.path("holdId").asString()).isEqualTo(jdbc.queryForObject("SELECT hold_id FROM reservation_process WHERE id = ?",String.class,id));
+        assertThat(payload.path("reservationProcessId").asString()).isEqualTo(jdbc.queryForObject("SELECT message_key FROM phone_submission_outbox WHERE event_id = ?",String.class,eventId));
+        assertThat(java.time.Instant.parse(payload.path("occurredAt").asString())).isBeforeOrEqualTo(java.time.Instant.now());
+        assertThat(submissionEvent(submitPhone(token,id,requestId,"+5492615551234"))).isEqualTo(eventId);
+        assertThat(submitPhone(token,id,requestId,"+5492615559999").statusCode()).isEqualTo(409);
+        var current=request("GET","/api/reservation-processes/"+id+"/phone-submission",null,token);
+        assertThat(current.statusCode()).isEqualTo(200);
+        assertThat(current.body()).contains(eventId,"PENDING").doesNotContain("555");
+        assertThat(request("GET","/api/reservation-processes/"+id,null,token).body()).contains("WAITING_FOR_PHONE");
+    }
+    @Test
+    void phoneSubmissionEnforcesOwnerActivationAndInputValidation() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token); String requestId=requestedPhone(id); String other=holdUser();
+        assertThat(submitPhone(null,id,requestId,"+5492615551234").statusCode()).isEqualTo(401);
+        assertThat(submitPhone(other,id,requestId,"+5492615551234").statusCode()).isEqualTo(404);
+        assertThat(submitPhone(token,java.util.UUID.randomUUID().toString(),requestId,"+5492615551234").statusCode()).isEqualTo(404);
+        assertThat(request("GET","/api/reservation-processes/"+id+"/phone-submission",null,other).statusCode()).isEqualTo(404);
+        assertThat(request("GET","/api/reservation-processes/"+id+"/phone-submission",null,null).statusCode()).isEqualTo(401);
+        for(String body : java.util.List.of("{}","null","{bad}","{\"phoneNumber\":\"1234567\"}","{\"requestEventId\":\"x\"}")) {
+            assertThat(request("POST","/api/reservation-processes/"+id+"/phone",body,token).statusCode()).isEqualTo(400);
+        }
+        for(String phone : java.util.List.of("", "123", "++12345678", "1234567890123456", "abc1234567", "x".repeat(101))) {
+            assertThat(submitPhone(token,id,requestId,phone).statusCode()).isEqualTo(400);
+        }
+        assertThat(submitPhone(token,"bad-id",requestId,"+5492615551234").statusCode()).isEqualTo(400);
+        assertThat(submitPhone(token,id,"x".repeat(101),"+5492615551234").statusCode()).isEqualTo(400);
+        jdbc.update("UPDATE application_user SET activated = FALSE WHERE id = (SELECT user_id FROM reservation_process WHERE id = ?)",id);
+        assertThat(submitPhone(token,id,requestId,"+5492615551234").statusCode()).isEqualTo(401);
+        assertThat(request("GET","/api/reservation-processes/"+id+"/phone-submission",null,token).statusCode()).isEqualTo(401);
+    }
+    @Test
+    void rejectsPhoneWithoutCurrentRequestOrWithExpiredRequest() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token);
+        var noRequest=submitPhone(token,id,"not-known","1234567");
+        assertThat(noRequest.statusCode()).isEqualTo(409);
+        assertThat(noRequest.body()).contains("PHONE_NOT_EXPECTED");
+        String requestId=requestedPhone(id);
+        assertThat(submitPhone(token,id,"old-request","1234567").body()).contains("PHONE_REQUEST_CHANGED");
+        jdbc.update("UPDATE reservation_process SET expires_at = ? WHERE id = ?",java.sql.Timestamp.from(java.time.Instant.now().minusSeconds(1)),id);
+        var expired=submitPhone(token,id,requestId,"1234567");
+        assertThat(expired.statusCode()).isEqualTo(409);
+        assertThat(expired.body()).contains("PHONE_REQUEST_EXPIRED");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM phone_submission_outbox WHERE process_id = ?",Integer.class,id)).isZero();
+    }
+    @Test
+    void concurrentPhonePostsShareOneEventAndLease() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token); String requestId=requestedPhone(id);
+        try(var executor=java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var first=executor.submit(() -> submitPhone(token,id,requestId,"1234567"));
+            var second=executor.submit(() -> submitPhone(token,id,requestId,"1234567"));
+            String eventId=submissionEvent(first.get(10,java.util.concurrent.TimeUnit.SECONDS));
+            assertThat(submissionEvent(second.get(10,java.util.concurrent.TimeUnit.SECONDS))).isEqualTo(eventId);
+            var lease1=executor.submit(() -> phoneOutbox.claim(eventId));
+            var lease2=executor.submit(() -> phoneOutbox.claim(eventId));
+            assertThat(java.util.stream.Stream.of(lease1.get(),lease2.get()).filter(java.util.Optional::isPresent).count()).isEqualTo(1);
+            assertThat(jdbc.queryForObject("SELECT attempts FROM phone_submission_outbox WHERE event_id = ?",Integer.class,eventId)).isEqualTo(1);
+        }
+    }
+    @Test
+    void expiredLeaseRecoversSamePayloadAndOldWorkerCannotOverwriteNewClaim() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token); String requestId=requestedPhone(id);
+        String eventId=submissionEvent(submitPhone(token,id,requestId,"1234567"));
+        assertThat(phoneOutbox.due()).contains(eventId);
+        var first=phoneOutbox.claim(eventId).orElseThrow();
+        assertThat(first.toString()).doesNotContain("1234567");
+        assertThat(phoneOutbox.claim(eventId)).isEmpty();
+        assertThat(phoneOutbox.due()).doesNotContain(eventId);
+        jdbc.update("UPDATE phone_submission_outbox SET lease_until = ? WHERE event_id = ?",java.sql.Timestamp.from(java.time.Instant.now().minusSeconds(1)),eventId);
+        assertThat(phoneOutbox.due()).contains(eventId);
+        var second=phoneOutbox.claim(eventId).orElseThrow();
+        assertThat(second.payload()).isEqualTo(first.payload());
+        assertThat(second.key()).isEqualTo(first.key());
+        assertThat(second.leaseToken()).isNotEqualTo(first.leaseToken());
+        phoneOutbox.published(first); phoneOutbox.failed(first);
+        assertThat(jdbc.queryForObject("SELECT delivery_status FROM phone_submission_outbox WHERE event_id = ?",String.class,eventId)).isEqualTo("SENDING");
+        phoneOutbox.published(second);
+        assertThat(phoneOutbox.claim(eventId)).isEmpty();
+        assertThat(phoneOutbox.due()).doesNotContain(eventId);
+        assertThat(submitPhone(token,id,requestId,"1234567").body()).contains("PUBLISHED");
+        assertThat(request("GET","/api/reservation-processes/"+id,null,token).body()).contains("WAITING_FOR_PHONE");
+    }
+    @Test
+    void failedPublicationWaitsBeforeRetryingAndKeepsIdentity() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token); String requestId=requestedPhone(id);
+        String eventId=submissionEvent(submitPhone(token,id,requestId,"1234567"));
+        var delivery=phoneOutbox.claim(eventId).orElseThrow(); phoneOutbox.failed(delivery);
+        assertThat(phoneOutbox.claim(eventId)).isEmpty();
+        assertThat(phoneOutbox.due()).doesNotContain(eventId);
+        jdbc.update("UPDATE phone_submission_outbox SET next_attempt_at = ? WHERE event_id = ?",java.sql.Timestamp.from(java.time.Instant.now().minusSeconds(1)),eventId);
+        var retry=phoneOutbox.claim(eventId).orElseThrow();
+        assertThat(retry.payload()).isEqualTo(delivery.payload());
+        assertThat(retry.eventId()).isEqualTo(eventId);
+        phoneOutbox.published(retry);
+        assertThat(submitPhone(token,id,requestId,"1234567").body()).contains("PUBLISHED","publishedAt");
+    }
+    @ParameterizedTest
+    @ValueSource(strings={"expiry","request","status"})
+    void stopsQueuedPublicationIfRequestIsNoLongerUsable(String change) throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token); String requestId=requestedPhone(id);
+        String eventId=submissionEvent(submitPhone(token,id,requestId,"1234567"));
+        switch(change) {
+            case "expiry" -> jdbc.update("UPDATE phone_submission_outbox SET expires_at = ? WHERE event_id = ?",java.sql.Timestamp.from(java.time.Instant.now().minusSeconds(1)),eventId);
+            case "request" -> jdbc.update("UPDATE reservation_process SET phone_request_event_id = 'new-request' WHERE id = ?",id);
+            default -> jdbc.update("UPDATE reservation_process SET status = 'REJECTED' WHERE id = ?",id);
+        }
+        assertThat(phoneOutbox.claim(eventId)).isEmpty();
+        assertThat(phoneOutbox.due()).doesNotContain(eventId);
+        assertThat(jdbc.queryForObject("SELECT delivery_status FROM phone_submission_outbox WHERE event_id = ?",String.class,eventId)).isEqualTo("STOPPED");
+        assertThat(submitPhone(token,id,requestId,"1234567").body()).contains("STOPPED");
+    }
+    @Test
+    void newerRequestCanReceiveDifferentPhoneWithoutReusingOldEvent() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token); String requestId=requestedPhone(id);
+        String oldId=submissionEvent(submitPhone(token,id,requestId,"1234567"));
+        var newer=phoneEvent(id,java.util.UUID.randomUUID().toString(),"2030-01-01T10:05:00Z");
+        bookingInbox.receive(newer);
+        assertThat(phoneOutbox.claim(oldId)).isEmpty();
+        String nextId=submissionEvent(submitPhone(token,id,newer.eventId(),"7654321"));
+        assertThat(nextId).isNotEqualTo(oldId);
+        assertThat(request("GET","/api/reservation-processes/"+id+"/phone-submission",null,token).body()).contains(nextId).doesNotContain(oldId);
+        assertThat(phoneOutbox.claim(nextId)).isPresent();
+        assertThat(phoneOutbox.claim("missing")).isEmpty();
     }
 }

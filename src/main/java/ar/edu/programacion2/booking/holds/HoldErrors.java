@@ -9,7 +9,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
-@RestControllerAdvice(assignableTypes = {HoldController.class, ConfirmHoldController.class})
+@RestControllerAdvice(assignableTypes = {HoldController.class, ConfirmHoldController.class, ar.edu.programacion2.booking.phone.PhoneSubmissionController.class})
 public class HoldErrors {
     @ExceptionHandler(HoldConflictException.class)
     ResponseEntity<ErrorResponse> conflict(HoldConflictException exception) { return error(409,exception.getMessage()); }

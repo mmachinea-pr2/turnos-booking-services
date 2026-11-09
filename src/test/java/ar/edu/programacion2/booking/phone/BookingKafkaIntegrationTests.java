@@ -122,4 +122,37 @@ class BookingKafkaIntegrationTests {
             throw new AssertionError("Could not read test consumer offset", exception);
         }
     }
+
+    @Test
+    void publishesPhoneEnvelopeWithProcessKeyUsingConfiguredProducer() throws Exception {
+        String group="test-"+UUID.randomUUID();
+        String topic="catedra.turnos.telefono."+group;
+        String payload="""
+            {"eventId":"phone-event","eventType":"AdditionalInformationSubmitted",
+            "groupId":"%s","reservationProcessId":"process-1","holdId":"hold-1",
+            "requestEventId":"request-1","information":{"phoneNumber":"+5492615551234"},
+            "occurredAt":"2030-01-01T10:00:00Z","schemaVersion":1}
+            """.formatted(group);
+        try(var admin=AdminClient.create(Map.of("bootstrap.servers",KAFKA.getBootstrapServers()));
+                var consumer=new org.apache.kafka.clients.consumer.KafkaConsumer<String,String>(
+                    Map.of("bootstrap.servers",KAFKA.getBootstrapServers(),"group.id",group,"auto.offset.reset","earliest","enable.auto.commit",false),
+                    new org.apache.kafka.common.serialization.StringDeserializer(),new org.apache.kafka.common.serialization.StringDeserializer())) {
+            admin.createTopics(List.of(new NewTopic(topic,1,(short)1))).all().get(20,TimeUnit.SECONDS);
+            consumer.subscribe(List.of(topic));
+            new ApplicationContextRunner().withUserConfiguration(PhoneProducerConfiguration.class)
+                .withPropertyValues("booking.catedra.kafka.enabled=true","booking.catedra.kafka.bootstrap-servers="+KAFKA.getBootstrapServers())
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    context.getBean(PhonePublisher.class).publish(new PhoneSubmissionOutbox.Delivery("phone-event","lease",topic,"process-1",payload));
+                    var received=new java.util.ArrayList<org.apache.kafka.clients.consumer.ConsumerRecord<String,String>>();
+                    await().atMost(Duration.ofSeconds(20)).until(() -> {
+                        consumer.poll(Duration.ofMillis(250)).forEach(received::add);
+                        return !received.isEmpty();
+                    });
+                    assertThat(received).hasSize(1);
+                    assertThat(received.getFirst().key()).isEqualTo("process-1");
+                    assertThat(received.getFirst().value()).isEqualTo(payload);
+                });
+        }
+    }
 }
