@@ -118,3 +118,7 @@ Antes de registro/login: GET `/api/csrf`, conservar la cookie y enviar el token 
 ### Disponibilidad de turnos
 
 GET `/api/availability?professionalId=15&date=2026-11-09` con JWT de usuario. Combina horarios de catálogo y ocupaciones de cátedra sin replicar el catálogo. Requiere configurar URLs y JWT técnico; un fallo de las fuentes devuelve 503. Ver [contrato, configuración y pruebas](docs/features/disponibilidad/SPEC.md).
+
+### Bloqueos temporales de turnos
+
+POST `/api/appointment-holds` crea un hold para el usuario autenticado con una clave `requestId` UUID. GET `/api/reservation-processes/{id}` permite consultar exclusivamente sus procesos. Los reintentos conservan la misma clave; una respuesta incierta no provoca otro POST remoto. Ver [contrato, estados y recuperación](docs/features/holds/SPEC.md). La creación de un hold aún no confirma una reserva.
