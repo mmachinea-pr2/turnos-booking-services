@@ -45,19 +45,63 @@ public class RestHoldGateway implements HoldGateway {
     }
     private boolean identifier(String value) { return value != null && !value.isBlank() && value.length() <= 100; }
     private Outcome rejectionOrUncertain(RestClientResponseException exception) {
+        String code = errorCode(exception);
+        if (code == null) return Outcome.uncertain();
+        int status = exception.getStatusCode().value();
+        boolean rejected = (status == 409 && CONFLICTS.contains(code))
+            || (status == 400 && INVALID.contains(code))
+            || (status == 404 && "PROFESSIONAL_NOT_FOUND".equals(code));
+        return rejected ? Outcome.rejected(code) : Outcome.uncertain();
+    }
+    private String errorCode(RestClientResponseException exception) {
         try {
-            var codeNode = json.readTree(exception.getResponseBodyAsString()).get("code");
-            if (codeNode == null || !codeNode.isString()) return Outcome.uncertain();
-            String code = codeNode.asText();
-            int status = exception.getStatusCode().value();
-            boolean rejected = (status == 409 && CONFLICTS.contains(code))
-                || (status == 400 && INVALID.contains(code))
-                || (status == 404 && "PROFESSIONAL_NOT_FOUND".equals(code));
-            return rejected ? Outcome.rejected(code) : Outcome.uncertain();
-        } catch (tools.jackson.core.JacksonException exceptionIgnored) {
-            return Outcome.uncertain();
+            var code = json.readTree(exception.getResponseBodyAsString()).get("code");
+            return code != null && code.isString() ? code.asText() : null;
+        } catch (tools.jackson.core.JacksonException ignored) {
+            return null;
         }
     }
+    @Override public Outcome confirm(ReservationProcess process, ConfirmHoldRequest request, String userId) {
+        if (technicalToken.isBlank()) return Outcome.confirmationUncertain();
+        try {
+            var response = client.post().uri("/api/appointment-holds/{holdId}/confirm",process.holdId())
+                .headers(h -> h.setBearerAuth(technicalToken)).contentType(MediaType.APPLICATION_JSON)
+                .body(new RemoteConfirmationRequest(userId,request.patientFirstName(),request.patientLastName()))
+                .retrieve().toEntity(RemoteConfirmation.class);
+            var confirmed = response.getBody();
+            if (response.getStatusCode().value() != 202 || !validConfirmation(process,confirmed)) {
+                return Outcome.confirmationUncertain();
+            }
+            return new Outcome(ReservationProcess.Status.WAITING_FOR_PHONE,process.holdId(),
+                confirmed.reservationProcessId(),confirmed.expiresAt(),null);
+        } catch (RestClientResponseException exception) {
+            return confirmationRejectionOrUncertain(exception);
+        } catch (RestClientException exception) {
+            return Outcome.confirmationUncertain();
+        }
+    }
+    private boolean validConfirmation(ReservationProcess process, RemoteConfirmation response) {
+        return response != null && process.reservationProcessId().equals(response.reservationProcessId())
+            && "WAITING_FOR_PHONE".equals(response.status()) && response.expiresAt() != null;
+    }
+    private Outcome confirmationRejectionOrUncertain(RestClientResponseException exception) {
+        String code = errorCode(exception);
+        if (code == null) return Outcome.confirmationUncertain();
+        int status = exception.getStatusCode().value();
+        if (status == 404 && "HOLD_EXPIRED".equals(code)) {
+            return new Outcome(ReservationProcess.Status.EXPIRED,null,null,null,code);
+        }
+        boolean rejected = (status == 400 && Set.of("INVALID_SLOT","EXTERNAL_PATIENT_MISMATCH","VALIDATION_ERROR").contains(code))
+            || (status == 404 && "PROFESSIONAL_NOT_FOUND".equals(code))
+            || (status == 409 && "SLOT_ALREADY_RESERVED".equals(code));
+        // HOLD_NOT_FOUND and ALREADY_CONFIRMED do not prove that the reservation was not created.
+        return rejected ? Outcome.rejected(code) : Outcome.confirmationUncertain();
+    }
+    public record RemoteConfirmationRequest(String externalPatientId, String patientFirstName, String patientLastName) {
+        @Override public String toString() { return "RemoteConfirmationRequest[redacted]"; }
+    }
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+    public record RemoteConfirmation(String reservationProcessId, String status, Instant expiresAt) {}
     public record RemoteRequest(long professionalId, java.time.LocalDate date, java.time.LocalTime startTime,
                                 String externalPatientId) {}
     @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)

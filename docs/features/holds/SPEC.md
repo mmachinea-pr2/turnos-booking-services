@@ -83,7 +83,7 @@ Si el proceso termina después del POST remoto y antes de persistir su resultado
 
 La referencia actual no ofrece consulta de holds por clave de petición ni idempotencia remota para repetir el POST perdido. Por ello no se presupone un TTL máximo ni se desbloquea automáticamente un estado incierto. CREATING sin una ejecución activa y UNCERTAIN requieren reconciliación/soporte; no hay en esta issue un endpoint para forzar su liberación. Se evita crear duplicados a costa de bloquear ese slot para ese usuario mientras no se pueda determinar el resultado.
 
-La confirmación REST, teléfono por Kafka, reserva final y cancelación pertenecen a los próximos bloques. Este endpoint crea solamente un bloqueo temporal; no confirma una reserva.
+La confirmación REST se incorpora en la [issue #14](../confirmacion-holds/SPEC.md). Teléfono por Kafka, reserva final y cancelación pertenecen a los próximos bloques. El endpoint de creación de holds crea solamente un bloqueo temporal; no confirma una reserva.
 
 ## Validación y uso local
 

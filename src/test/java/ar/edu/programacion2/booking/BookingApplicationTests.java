@@ -42,7 +42,7 @@ class BookingApplicationTests {
     @Test
     void flywayCreatesUserSchema() {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1", Integer.class))
-            .isEqualTo(2);
+            .isEqualTo(3);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'application_user'", Integer.class))
             .isEqualTo(1);
     }
@@ -537,6 +537,140 @@ class BookingApplicationTests {
             }
         }
         org.mockito.Mockito.verify(holdGateway,org.mockito.Mockito.times(1)).create(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString());
+    }
+
+    private String createHeldProcess(String token) throws Exception {
+        org.mockito.Mockito.when(holdGateway.create(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString())).thenReturn(held());
+        var response=createHold(holdBody(),token);
+        assertThat(response.statusCode()).isEqualTo(201);
+        return json.readTree(response.body()).get("id").asText();
+    }
+    private HttpResponse<String> confirmHold(String id,String token) throws Exception {
+        return request("POST","/api/reservation-processes/"+id+"/confirm",
+            json.writeValueAsString(java.util.Map.of("patientFirstName"," Ana ","patientLastName"," Perez ","externalPatientId","forged")),token);
+    }
+    private ar.edu.programacion2.booking.holds.HoldGateway.Outcome waiting() {
+        return new ar.edu.programacion2.booking.holds.HoldGateway.Outcome(
+            ar.edu.programacion2.booking.holds.ReservationProcess.Status.WAITING_FOR_PHONE,null,null,
+            java.time.Instant.now().plusSeconds(300),null);
+    }
+
+    @Test
+    void confirmationPersistsClaimNamesAndRemoteExpiryAndRepeatsWithoutPosting() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token);
+        String owner=json.readTree(request("GET","/api/account",null,token).body()).get("id").asText();
+        var outcome=waiting();
+        org.mockito.Mockito.when(holdGateway.confirm(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.eq(owner)))
+            .thenAnswer(call -> {
+                var process=call.getArgument(0,ar.edu.programacion2.booking.holds.ReservationProcess.class);
+                var names=call.getArgument(1,ar.edu.programacion2.booking.holds.ConfirmHoldRequest.class);
+                assertThat(process.id()).isEqualTo(id);
+                assertThat(process.holdId()).startsWith("hold-");
+                assertThat(names.patientFirstName()).isEqualTo("Ana");
+                assertThat(names.patientLastName()).isEqualTo("Perez");
+                assertThat(jdbc.queryForObject("SELECT status FROM reservation_process WHERE id = ?",String.class,id)).isEqualTo("CONFIRMING");
+                assertThat(jdbc.queryForObject("SELECT patient_first_name FROM reservation_process WHERE id = ?",String.class,id)).isEqualTo("Ana");
+                return outcome;
+            });
+        var first=confirmHold(id,token);
+        assertThat(first.statusCode()).isEqualTo(202);
+        assertThat(first.body()).contains("WAITING_FOR_PHONE").doesNotContain("forged");
+        assertThat(first.headers().firstValue("Location")).contains("/api/reservation-processes/"+id);
+        assertThat(first.headers().firstValue("Cache-Control").orElse("")).contains("no-store");
+        assertThat(json.readTree(first.body()).get("expiresAt").asText()).startsWith(outcome.expiresAt().toString().substring(0,19));
+        assertThat(confirmHold(id,token).statusCode()).isEqualTo(202);
+        assertThat(request("GET","/api/reservation-processes/"+id,null,token).body()).contains("WAITING_FOR_PHONE");
+        assertThat(createHold(holdBody(),token).body()).contains("PROCESS_ALREADY_PENDING");
+        var changed=request("POST","/api/reservation-processes/"+id+"/confirm",
+            "{\"patientFirstName\":\"Otra\",\"patientLastName\":\"Perez\"}",token);
+        assertThat(changed.statusCode()).isEqualTo(409);
+        assertThat(changed.body()).contains("CONFIRMATION_DATA_CHANGED");
+        org.mockito.Mockito.verify(holdGateway,org.mockito.Mockito.times(1)).confirm(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.eq(owner));
+    }
+
+    @Test
+    void confirmationEnforcesOwnershipActivationAndValidNames() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token); String other=holdUser();
+        assertThat(confirmHold(id,other).statusCode()).isEqualTo(404);
+        assertThat(confirmHold(java.util.UUID.randomUUID().toString(),token).statusCode()).isEqualTo(404);
+        assertThat(confirmHold(id,null).statusCode()).isEqualTo(401);
+        for (String body : java.util.List.of("{}","{bad}","{\"patientFirstName\":\"A\",\"patientLastName\":\"Perez\"}",
+                "{\"patientFirstName\":\"Ana\",\"patientLastName\":\"   \"}")) {
+            assertThat(request("POST","/api/reservation-processes/"+id+"/confirm",body,token).statusCode()).isEqualTo(400);
+        }
+        var longName=java.util.Map.of("patientFirstName","a".repeat(101),"patientLastName","Perez");
+        assertThat(request("POST","/api/reservation-processes/"+id+"/confirm",json.writeValueAsString(longName),token).statusCode()).isEqualTo(400);
+        assertThat(confirmHold("bad-id",token).statusCode()).isEqualTo(400);
+        jdbc.update("UPDATE application_user SET activated=false WHERE id=(SELECT user_id FROM reservation_process WHERE id=?)",id);
+        assertThat(confirmHold(id,token).statusCode()).isEqualTo(401);
+        org.mockito.Mockito.verify(holdGateway,org.mockito.Mockito.never()).confirm(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void expiredHoldCannotBeConfirmedAndExpiryIsCommitted() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token);
+        jdbc.update("UPDATE reservation_process SET expires_at=? WHERE id=?",java.sql.Timestamp.from(java.time.Instant.now().minusSeconds(1)),id);
+        var result=confirmHold(id,token);
+        assertThat(result.statusCode()).isEqualTo(409);
+        assertThat(result.body()).contains("EXPIRED");
+        assertThat(jdbc.queryForObject("SELECT status FROM reservation_process WHERE id=?",String.class,id)).isEqualTo("EXPIRED");
+        org.mockito.Mockito.verify(holdGateway,org.mockito.Mockito.never()).confirm(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings={"CREATING","UNCERTAIN"})
+    void holdWithoutKnownSuccessfulCreationIsNotConfirmable(String status) throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token);
+        jdbc.update("UPDATE reservation_process SET status=? WHERE id=?",status,id);
+        var result=confirmHold(id,token);
+        assertThat(result.statusCode()).isEqualTo(409);
+        assertThat(result.body()).contains("HOLD_NOT_CONFIRMABLE");
+        org.mockito.Mockito.verify(holdGateway,org.mockito.Mockito.never()).confirm(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void uncertainConfirmationPreservesIdentifiersAndIsNotRetriedOrExpiredByOldDeadline() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token);
+        org.mockito.Mockito.when(holdGateway.confirm(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString()))
+            .thenReturn(ar.edu.programacion2.booking.holds.HoldGateway.Outcome.confirmationUncertain());
+        var first=confirmHold(id,token);
+        assertThat(first.statusCode()).isEqualTo(202);
+        assertThat(first.body()).contains("CONFIRMATION_UNCERTAIN","CONFIRMATION_RESULT_UNKNOWN","hold-","process-");
+        jdbc.update("UPDATE reservation_process SET expires_at=? WHERE id=?",java.sql.Timestamp.from(java.time.Instant.now().minusSeconds(1)),id);
+        assertThat(confirmHold(id,token).body()).contains("CONFIRMATION_UNCERTAIN");
+        assertThat(createHold(holdBody(),token).body()).contains("PROCESS_ALREADY_PENDING");
+        org.mockito.Mockito.verify(holdGateway,org.mockito.Mockito.times(1)).confirm(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void confirmationRejectionIsPersistedAndNeverResent() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token);
+        org.mockito.Mockito.when(holdGateway.confirm(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString()))
+            .thenReturn(ar.edu.programacion2.booking.holds.HoldGateway.Outcome.rejected("INVALID_SLOT"));
+        assertThat(confirmHold(id,token).statusCode()).isEqualTo(409);
+        assertThat(confirmHold(id,token).body()).contains("REJECTED","INVALID_SLOT");
+        org.mockito.Mockito.verify(holdGateway,org.mockito.Mockito.times(1)).confirm(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void simultaneousConfirmationsSendOnceAndLateResponseDoesNotOverwriteAnotherState() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token);
+        var entered=new java.util.concurrent.CountDownLatch(1); var release=new java.util.concurrent.CountDownLatch(1);
+        org.mockito.Mockito.when(holdGateway.confirm(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString()))
+            .thenAnswer(call -> { entered.countDown(); assertThat(release.await(10,java.util.concurrent.TimeUnit.SECONDS)).isTrue(); return waiting(); });
+        try(var executor=java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            var first=executor.submit(() -> confirmHold(id,token));
+            try {
+                assertThat(entered.await(10,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                var repeated=confirmHold(id,token);
+                assertThat(repeated.statusCode()).isEqualTo(202);
+                assertThat(repeated.body()).contains("CONFIRMING");
+                jdbc.update("UPDATE reservation_process SET status='REJECTED',error_code='TERMINAL_EVENT' WHERE id=?",id);
+            } finally { release.countDown(); }
+            assertThat(first.get().statusCode()).isEqualTo(409);
+        }
+        assertThat(request("GET","/api/reservation-processes/"+id,null,token).body()).contains("REJECTED","TERMINAL_EVENT");
+        org.mockito.Mockito.verify(holdGateway,org.mockito.Mockito.times(1)).confirm(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString());
     }
 
     private HttpResponse<String> post(String path, Object body) throws Exception {

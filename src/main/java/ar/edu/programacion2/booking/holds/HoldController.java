@@ -18,7 +18,7 @@ public class HoldController {
         var result = service.create(jwt.getSubject(),jwt.getTokenValue(),request);
         var process = result.process();
         int status = switch (process.status()) {
-            case CREATING, UNCERTAIN -> 202;
+            case CREATING, UNCERTAIN, CONFIRMING, WAITING_FOR_PHONE, CONFIRMATION_UNCERTAIN -> 202;
             case REJECTED -> 409;
             case HELD -> result.created() ? 201 : 200;
             case EXPIRED -> 200;

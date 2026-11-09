@@ -46,7 +46,7 @@ public class HoldRepository {
         Integer blocking = jdbc.queryForObject("""
             SELECT COUNT(*) FROM reservation_process WHERE user_id = ? AND professional_id = ?
             AND appointment_date = ? AND start_time = ?
-            AND (status IN ('CREATING', 'UNCERTAIN') OR (status = 'HELD' AND expires_at > ?))
+            AND (status IN ('CREATING', 'UNCERTAIN', 'CONFIRMING', 'WAITING_FOR_PHONE', 'CONFIRMATION_UNCERTAIN') OR (status = 'HELD' AND expires_at > ?))
             """, Integer.class, userId, request.professionalId(), request.date(), request.startTime(), Timestamp.from(now));
         if (blocking != null && blocking > 0) throw new HoldConflictException("PROCESS_ALREADY_PENDING");
         String id = UUID.randomUUID().toString();
@@ -67,5 +67,32 @@ public class HoldRepository {
             Timestamp.from(now), userId, id);
         return owned(userId,id,now);
     }
+    @Transactional
+    public ConfirmationClaim claimConfirmation(String userId, String id, ConfirmHoldRequest request, Instant now) {
+        jdbc.query("SELECT * FROM reservation_process WHERE user_id = ? AND id = ? FOR UPDATE", MAPPER,userId,id)
+            .stream().findFirst().orElseThrow(ProcessNotFoundException::new);
+        var process = owned(userId,id,now);
+        var names = jdbc.queryForMap("SELECT patient_first_name, patient_last_name FROM reservation_process WHERE id = ?",id);
+        var first = names.get("patient_first_name");
+        if (first != null && (!first.equals(request.patientFirstName())
+                || !request.patientLastName().equals(names.get("patient_last_name")))) {
+            throw new HoldConflictException("CONFIRMATION_DATA_CHANGED");
+        }
+        if (!ReservationProcess.Status.HELD.equals(process.status())) return new ConfirmationClaim(process,false);
+        jdbc.update("""
+            UPDATE reservation_process SET status = 'CONFIRMING', patient_first_name = ?, patient_last_name = ?,
+            confirmation_started_at = ?, updated_at = ? WHERE user_id = ? AND id = ? AND status = 'HELD'
+            """,request.patientFirstName(),request.patientLastName(),Timestamp.from(now),Timestamp.from(now),userId,id);
+        return new ConfirmationClaim(owned(userId,id,now),true);
+    }
+    public ReservationProcess finishConfirmation(String userId, String id, HoldGateway.Outcome outcome, Instant now) {
+        jdbc.update("""
+            UPDATE reservation_process SET status = ?, expires_at = COALESCE(?, expires_at), error_code = ?, updated_at = ?
+            WHERE user_id = ? AND id = ? AND status = 'CONFIRMING'
+            """,outcome.status().name(),outcome.expiresAt() == null ? null : Timestamp.from(outcome.expiresAt()),
+            outcome.errorCode(),Timestamp.from(now),userId,id);
+        return owned(userId,id,now);
+    }
+    public record ConfirmationClaim(ReservationProcess process, boolean send) {}
     public record Started(ReservationProcess process, boolean created) {}
 }
