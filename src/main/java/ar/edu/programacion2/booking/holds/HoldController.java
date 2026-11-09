@@ -11,7 +11,19 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 public class HoldController {
     private final HoldService service;
-    public HoldController(HoldService service) { this.service = service; }
+    private final ar.edu.programacion2.booking.phone.BookingEventInbox inbox;
+    public HoldController(HoldService service, ar.edu.programacion2.booking.phone.BookingEventInbox inbox) {
+        this.service = service;
+        this.inbox = inbox;
+    }
+    @GetMapping("/api/reservation-processes/{id}/phone-request")
+    public ResponseEntity<ar.edu.programacion2.booking.phone.PhoneRequest> phoneRequest(
+            @AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
+        service.get(jwt.getSubject(),id.toString());
+        return inbox.phoneRequest(jwt.getSubject(),id.toString())
+            .map(value -> ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(value))
+            .orElseGet(() -> ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build());
+    }
     @PostMapping("/api/appointment-holds")
     public ResponseEntity<ReservationProcess> create(@AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody CreateHoldRequest request) {

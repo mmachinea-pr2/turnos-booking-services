@@ -42,7 +42,7 @@ class BookingApplicationTests {
     @Test
     void flywayCreatesUserSchema() {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1", Integer.class))
-            .isEqualTo(3);
+            .isEqualTo(4);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'application_user'", Integer.class))
             .isEqualTo(1);
     }
@@ -694,5 +694,102 @@ class BookingApplicationTests {
                 .timeout(Duration.ofSeconds(5)).GET().build();
             return client.send(request, HttpResponse.BodyHandlers.ofString());
         }
+    }
+
+    @Autowired ar.edu.programacion2.booking.phone.BookingEventInbox bookingInbox;
+
+    private ar.edu.programacion2.booking.phone.BookingEvent phoneEvent(String id, String eventId, String occurred) {
+        String remote = jdbc.queryForObject("SELECT remote_process_id FROM reservation_process WHERE id = ?",String.class,id);
+        String hold = jdbc.queryForObject("SELECT hold_id FROM reservation_process WHERE id = ?",String.class,id);
+        return ar.edu.programacion2.booking.phone.BookingEvent.parse(remote,json.writeValueAsString(java.util.Map.of(
+            "eventId",eventId,"reservationProcessId",remote,"holdId",hold,"eventType","AdditionalInformationRequested",
+            "requiredField","PHONE_NUMBER","message","Ingrese un telefono","schemaVersion",1,
+            "occurredAt",occurred,"expiresAt","2030-01-01T11:00:00Z")));
+    }
+    private String inboxState(String eventId) {
+        return jdbc.queryForObject("SELECT processing_status FROM booking_event_inbox WHERE event_id = ?",String.class,eventId);
+    }
+    @Test
+    void phoneEventBeforeRestResponsePersistsRequestAndDoesNotRegress() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token);
+        var event=phoneEvent(id,java.util.UUID.randomUUID().toString(),"2030-01-01T10:00:00Z");
+        org.mockito.Mockito.when(holdGateway.confirm(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString()))
+            .thenAnswer(call -> { bookingInbox.receive(event); return waiting(); });
+        var response=confirmHold(id,token);
+        assertThat(response.body()).contains("WAITING_FOR_PHONE","2030-01-01T11:00:00Z");
+        bookingInbox.receive(event);
+        assertThat(inboxState(event.eventId())).isEqualTo("APPLIED");
+        String path="/api/reservation-processes/"+id+"/phone-request";
+        var phone=request("GET",path,null,token);
+        assertThat(phone.statusCode()).isEqualTo(200);
+        assertThat(phone.body()).contains(event.eventId(),"PHONE_NUMBER","Ingrese un telefono");
+        assertThat(phone.headers().firstValue("Cache-Control").orElse("")).contains("no-store");
+        assertThat(request("GET",path,null,null).statusCode()).isEqualTo(401);
+        assertThat(request("GET",path,null,holdUser()).statusCode()).isEqualTo(404);
+        jdbc.update("UPDATE application_user SET activated = FALSE WHERE id = (SELECT user_id FROM reservation_process WHERE id = ?)",id);
+        assertThat(request("GET",path,null,token).statusCode()).isEqualTo(401);
+    }
+    @Test
+    void pendingPhoneEventRecoversAfterProcessBecomesCorrelatable() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token);
+        assertThat(request("GET","/api/reservation-processes/"+id+"/phone-request",null,token).statusCode()).isEqualTo(204);
+        var event=phoneEvent(id,java.util.UUID.randomUUID().toString(),"2030-01-01T10:00:00Z");
+        jdbc.update("UPDATE reservation_process SET remote_process_id = NULL WHERE id = ?",id);
+        bookingInbox.receive(event);
+        assertThat(inboxState(event.eventId())).isEqualTo("PENDING");
+        assertThat(bookingInbox.pending()).doesNotContain(event.eventId());
+        jdbc.update("UPDATE reservation_process SET remote_process_id = ? WHERE id = ?",event.processId(),id);
+        bookingInbox.retry(event.eventId());
+        assertThat(inboxState(event.eventId())).isEqualTo("PENDING");
+        jdbc.update("UPDATE reservation_process SET status = 'CONFIRMATION_UNCERTAIN' WHERE id = ?",id);
+        assertThat(bookingInbox.pending()).contains(event.eventId());
+        new ar.edu.programacion2.booking.phone.PendingBookingEvents(bookingInbox).recover();
+        assertThat(inboxState(event.eventId())).isEqualTo("APPLIED");
+        assertThat(request("GET","/api/reservation-processes/"+id,null,token).body()).contains("WAITING_FOR_PHONE");
+    }
+    @Test
+    void outOfOrderPhoneRequestsAndTerminalStatesNeverRegress() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token);
+        jdbc.update("UPDATE reservation_process SET status = 'WAITING_FOR_PHONE' WHERE id = ?",id);
+        var first=phoneEvent(id,java.util.UUID.randomUUID().toString(),"2030-01-01T10:00:00Z");
+        var newer=phoneEvent(id,java.util.UUID.randomUUID().toString(),"2030-01-01T10:02:00Z");
+        var older=phoneEvent(id,java.util.UUID.randomUUID().toString(),"2030-01-01T10:01:00Z");
+        bookingInbox.receive(first); bookingInbox.receive(newer); bookingInbox.receive(older);
+        assertThat(inboxState(older.eventId())).isEqualTo("IGNORED");
+        assertThat(bookingInbox.phoneRequest(jdbc.queryForObject("SELECT user_id FROM reservation_process WHERE id = ?",String.class,id),id).orElseThrow().requestEventId()).isEqualTo(newer.eventId());
+        jdbc.update("UPDATE reservation_process SET status = 'REJECTED' WHERE id = ?",id);
+        var last=phoneEvent(id,java.util.UUID.randomUUID().toString(),"2030-01-01T10:03:00Z");
+        bookingInbox.receive(last);
+        assertThat(inboxState(last.eventId())).isEqualTo("IGNORED");
+        assertThat(request("GET","/api/reservation-processes/"+id,null,token).body()).contains("REJECTED");
+    }
+    @Test
+    void conflictingEventOrHoldRollsBackAndOtherTypesAreDurablyDeferred() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token);
+        jdbc.update("UPDATE reservation_process SET status = 'CONFIRMING' WHERE id = ?",id);
+        var event=phoneEvent(id,java.util.UUID.randomUUID().toString(),"2030-01-01T10:00:00Z");
+        var bad=ar.edu.programacion2.booking.phone.BookingEvent.parse(event.processId(),event.payload().toString().replace(event.payload().path("holdId").asString(),"wrong-hold"));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> bookingInbox.receive(bad)).isInstanceOf(IllegalArgumentException.class);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM booking_event_inbox WHERE event_id = ?",Integer.class,event.eventId())).isZero();
+        bookingInbox.receive(event);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> bookingInbox.receive(bad)).isInstanceOf(IllegalArgumentException.class);
+        assertThat(inboxState(event.eventId())).isEqualTo("APPLIED");
+        var deferred=ar.edu.programacion2.booking.phone.BookingEvent.parse(event.processId(),event.payload().toString()
+            .replace(event.eventId(),java.util.UUID.randomUUID().toString()).replace("AdditionalInformationRequested","AppointmentConfirmed"));
+        bookingInbox.receive(deferred); bookingInbox.receive(deferred);
+        assertThat(inboxState(deferred.eventId())).isEqualTo("DEFERRED");
+    }
+    @Test
+    void simultaneousDuplicatePhoneEventsHaveOneDurableEffect() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token);
+        jdbc.update("UPDATE reservation_process SET status = 'CONFIRMING' WHERE id = ?",id);
+        var event=phoneEvent(id,java.util.UUID.randomUUID().toString(),"2030-01-01T10:00:00Z");
+        try(var executor=java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var first=executor.submit(() -> bookingInbox.receive(event));
+            var second=executor.submit(() -> bookingInbox.receive(event));
+            first.get(10,java.util.concurrent.TimeUnit.SECONDS); second.get(10,java.util.concurrent.TimeUnit.SECONDS);
+        }
+        assertThat(inboxState(event.eventId())).isEqualTo("APPLIED");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM booking_event_inbox WHERE event_id = ?",Integer.class,event.eventId())).isEqualTo(1);
     }
 }
