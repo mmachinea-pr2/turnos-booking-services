@@ -79,7 +79,7 @@ public class BookingOutcomeHandler {
             int order = BookingEvent.instant(event.payload(),"occurredAt").compareTo(previous.toInstant());
             if (order < 0 || (order == 0 && priority(event.type()) <= priority((String)process.get("result_event_type")))) return true;
         }
-        if (process.get("result_event_id") != null && terminalBlocks(event.type(),(String)process.get("status"))) return true;
+        if ((process.get("result_event_id") != null || process.get("reservation_id") != null) && terminalBlocks(event.type(),(String)process.get("status"))) return true;
         var request = process.get("phone_request_event_id");
         return request != null && !request.equals(event.payload().path("requestEventId").asString()) && !INVALID.equals(event.type());
     }
@@ -96,7 +96,7 @@ public class BookingOutcomeHandler {
         return switch(status) {
             case "CANCELLED" -> !CANCELLED.equals(type);
             case "EXPIRED", "INVALID" -> true;
-            case "CONFIRMED" -> !CANCELLED.equals(type);
+            case "CONFIRMED" -> !CANCELLED.equals(type) && !CONFIRMED.equals(type);
             default -> false;
         };
     }
