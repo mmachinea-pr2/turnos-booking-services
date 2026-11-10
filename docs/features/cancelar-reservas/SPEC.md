@@ -53,8 +53,9 @@ permite detectar el intento sin perderlo ni enviarlo nuevamente al repetir la so
 Un error de persistencia puede devolver 503 HOLD_SERVICE_UNAVAILABLE.
 
 Aunque la cancelación remota está documentada como idempotente, este bloque no vuelve
-a enviar intentos inciertos ni rechazados. Su recuperación/reconciliación REST,
-incluido reintentar después de corregir una credencial ausente, queda para otro bloque.
+a enviar intentos inciertos ni rechazados. La [reconciliación manual de la issue #24](../consultar-recuperar-reservas/SPEC.md)
+permite detectar una cancelación completada consultando cátedra. Reintentar un envío
+rechazado, incluso después de corregir una credencial ausente, sigue pendiente.
 No borrar el intento manualmente para forzar un reenvío.
 
 ## Coordinación con Kafka

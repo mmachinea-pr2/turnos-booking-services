@@ -12,7 +12,7 @@ Proyecto integrador individual de Programación II, 2026. Se utilizan exclusivam
 
 ## Estado actual
 
-Base ejecutable con Spring Boot, salud, MySQL propio, Flyway y Docker Compose. Incluye registro, login Argon2id y JWT. Todavía no implementa reservas ni integraciones externas.
+Base ejecutable con Spring Boot, salud, MySQL propio, Flyway y Docker Compose. Incluye registro y login con Argon2id y JWT, disponibilidad, creación y confirmación de holds, intercambio de teléfono y resultados por Kafka, cancelaciones, consulta de reservas propias y reconciliación manual por REST. La validación integral contra cátedra sigue pendiente.
 
 ## Alcance previsto
 
@@ -105,7 +105,7 @@ Flyway está habilitado y Hibernate utiliza `validate`, nunca `create` ni `updat
 
 ## Pendientes
 
-Protección JWT de catálogo y reconciliación REST de reservas pendientes.
+Protección JWT de catálogo y validación integral de ambos backends contra cátedra. La reconciliación REST es manual y requiere una identidad remota conocida; no resuelve holds cuya respuesta de creación se perdió.
 
 ## CI y cobertura
 
@@ -158,3 +158,12 @@ una reserva confirmada, con motivo opcional de hasta 500 caracteres. El intento 
 guarda antes de llamar a cátedra. GET `/api/reservation-processes/{id-local}/cancellation`
 permite consultar su resultado, incluso si la respuesta remota fue incierta.
 Ver [contrato y coordinación REST/Kafka](docs/features/cancelar-reservas/SPEC.md).
+
+### Consulta y recuperación de reservas
+
+GET `/api/appointments?page=0&size=20` lista exclusivamente las reservas del usuario
+autenticado. POST `/api/reservation-processes/{id-local}/reconcile` consulta cátedra
+y recupera el estado local cuando hay una correspondencia inequívoca. No repite
+solicitudes de creación, confirmación ni cancelación. Si no encuentra la reserva,
+conserva la incertidumbre.
+Ver [contrato, estados y límites](docs/features/consultar-recuperar-reservas/SPEC.md).

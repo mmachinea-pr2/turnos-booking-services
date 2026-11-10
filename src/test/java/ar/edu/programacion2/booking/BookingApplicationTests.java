@@ -1206,4 +1206,129 @@ class BookingApplicationTests {
         }
         org.mockito.Mockito.verify(cancellationGateway,org.mockito.Mockito.times(1)).cancel(org.mockito.ArgumentMatchers.any());
     }
+
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    ar.edu.programacion2.booking.appointments.AppointmentGateway appointmentGateway;
+    private ar.edu.programacion2.booking.appointments.Appointment remoteAppointment(String id, String status) {
+        var row=jdbc.queryForMap("SELECT * FROM reservation_process WHERE id = ?",id);
+        return new ar.edu.programacion2.booking.appointments.Appointment(8251L,(String)row.get("remote_process_id"),
+            (String)row.get("user_id"),((Number)row.get("professional_id")).longValue(),
+            ((java.sql.Date)row.get("appointment_date")).toLocalDate(),((java.sql.Time)row.get("start_time")).toLocalTime(),
+            ((java.sql.Time)row.get("start_time")).toLocalTime().plusMinutes(30),status,
+            java.time.Instant.parse("2030-01-01T10:10:00Z"),status.equals("CANCELLED") ? java.time.Instant.parse("2030-01-01T10:11:00Z") : null);
+    }
+    private void remotePage(String id, String status) {
+        var appointment=remoteAppointment(id,status);
+        org.mockito.Mockito.when(appointmentGateway.find(appointment.externalPatientId(),0,100)).thenReturn(
+            new ar.edu.programacion2.booking.appointments.AppointmentGateway.Page(java.util.List.of(appointment),1,0,100));
+    }
+    private HttpResponse<String> reconcile(String token,String id) throws Exception {
+        return request("POST","/api/reservation-processes/"+id+"/reconcile",null,token);
+    }
+    @Test void listsOwnReservationsWithPaginationAndActiveUserCheck() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token); var remote=remoteAppointment(id,"CONFIRMED");
+        org.mockito.Mockito.when(appointmentGateway.find(remote.externalPatientId(),2,10)).thenReturn(
+            new ar.edu.programacion2.booking.appointments.AppointmentGateway.Page(java.util.List.of(remote),21,2,10));
+        var response=request("GET","/api/appointments?page=2&size=10&externalPatientId=another-user",null,token);
+        assertThat(response.statusCode()).isEqualTo(200); assertThat(response.body()).contains("8251","CONFIRMED");
+        assertThat(response.headers().firstValue("X-Total-Count")).contains("21");
+        assertThat(response.headers().firstValue("Cache-Control").orElse("")).contains("no-store");
+        org.mockito.Mockito.verify(appointmentGateway).find(remote.externalPatientId(),2,10);
+        assertThat(request("GET","/api/appointments",null,null).statusCode()).isEqualTo(401);
+        for(String query:java.util.List.of("page=-1","size=0","size=101","page=bad")) {
+            assertThat(request("GET","/api/appointments?"+query,null,token).statusCode()).isEqualTo(400);
+        }
+        jdbc.update("UPDATE application_user SET activated=FALSE WHERE id=?",remote.externalPatientId());
+        assertThat(request("GET","/api/appointments",null,token).statusCode()).isEqualTo(401);
+    }
+    @Test void recoversConfirmationAndStopsOutboxWithoutRepeatingWrites() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token); String requestId=requestedPhone(id);
+        String submission=submissionEvent(submitPhone(token,id,requestId,"1234567"));
+        remotePage(id,"CONFIRMED");
+        var response=reconcile(token,id);
+        assertThat(response.statusCode()).isEqualTo(200); assertThat(response.body()).contains("RECONCILED","CONFIRMED");
+        assertThat(jdbc.queryForObject("SELECT reservation_id FROM reservation_process WHERE id=?",Long.class,id)).isEqualTo(8251L);
+        assertThat(jdbc.queryForObject("SELECT delivery_status FROM phone_submission_outbox WHERE event_id=?",String.class,submission)).isEqualTo("STOPPED");
+        var stale=resultEvent(id,"AdditionalInformationRejected","2030-01-01T10:09:00Z"); bookingInbox.receive(stale);
+        assertThat(inboxState(stale.eventId())).isEqualTo("IGNORED");
+        var confirmed=resultEvent(id,"AppointmentConfirmed","2030-01-01T10:10:00Z"); bookingInbox.receive(confirmed);
+        assertThat(inboxState(confirmed.eventId())).isEqualTo("APPLIED");
+        assertThat(reconcile(token,id).body()).contains("UNCHANGED");
+        org.mockito.Mockito.verifyNoInteractions(cancellationGateway);
+    }
+    @Test void recoversUncertainCancellationAndDoesNotRegressFromCancelled() throws Exception {
+        String token=holdUser(); String id=confirmedProcess(token);
+        jdbc.update("UPDATE reservation_process SET cancellation_status='UNCERTAIN',cancellation_error='CANCELLATION_RESULT_UNKNOWN' WHERE id=?",id);
+        remotePage(id,"CANCELLED");
+        assertThat(reconcile(token,id).body()).contains("RECONCILED","CANCELLED");
+        var result=request("GET","/api/reservation-processes/"+id+"/cancellation",null,token);
+        assertThat(result.body()).contains("CANCELLED").doesNotContain("CANCELLATION_RESULT_UNKNOWN");
+        remotePage(id,"CONFIRMED");
+        assertThat(reconcile(token,id).body()).contains("UNCHANGED","CANCELLED");
+        org.mockito.Mockito.verifyNoInteractions(cancellationGateway);
+    }
+    @Test void reconciliationChecksOwnershipAndMissingRemoteIdentity() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token);
+        assertThat(reconcile(null,id).statusCode()).isEqualTo(401);
+        assertThat(reconcile(holdUser(),id).statusCode()).isEqualTo(404);
+        assertThat(reconcile(token,java.util.UUID.randomUUID().toString()).statusCode()).isEqualTo(404);
+        jdbc.update("UPDATE reservation_process SET remote_process_id=NULL,status='UNCERTAIN' WHERE id=?",id);
+        var response=reconcile(token,id);
+        assertThat(response.statusCode()).isEqualTo(200); assertThat(response.body()).contains("REMOTE_ID_UNKNOWN","UNCERTAIN");
+        org.mockito.Mockito.verifyNoInteractions(appointmentGateway);
+    }
+    @Test void noMatchAndUpstreamFailureKeepPendingState() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token); requestedPhone(id);
+        String user=remoteAppointment(id,"CONFIRMED").externalPatientId();
+        org.mockito.Mockito.when(appointmentGateway.find(user,0,100)).thenReturn(
+            new ar.edu.programacion2.booking.appointments.AppointmentGateway.Page(java.util.List.of(),0,0,100));
+        assertThat(reconcile(token,id).body()).contains("NOT_FOUND","WAITING_FOR_PHONE");
+        org.mockito.Mockito.when(appointmentGateway.find(user,0,100)).thenThrow(new ar.edu.programacion2.booking.availability.AvailabilityUnavailableException());
+        assertThat(reconcile(token,id).statusCode()).isEqualTo(503);
+        assertThat(request("GET","/api/reservation-processes/"+id,null,token).body()).contains("WAITING_FOR_PHONE");
+    }
+    @Test void kafkaUpdateDuringRemoteReadWins() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token); requestedPhone(id);
+        var remote=remoteAppointment(id,"PHONE_PENDING");
+        org.mockito.Mockito.when(appointmentGateway.find(remote.externalPatientId(),0,100)).thenAnswer(call -> {
+            bookingInbox.receive(resultEvent(id,"AppointmentConfirmed","2030-01-01T10:10:00Z"));
+            return new ar.edu.programacion2.booking.appointments.AppointmentGateway.Page(java.util.List.of(remote),1,0,100);
+        });
+        assertThat(reconcile(token,id).body()).contains("CONCURRENT_CHANGE","CONFIRMED");
+    }
+    @ParameterizedTest @ValueSource(strings={"PHONE_PENDING","FAILED","CONFIRMED","CANCELLED"})
+    void recoversConfirmationUncertaintyFromAuthoritativeStatus(String status) throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token);
+        jdbc.update("UPDATE reservation_process SET status='CONFIRMATION_UNCERTAIN',error_code='CONFIRMATION_RESULT_UNKNOWN' WHERE id=?",id);
+        remotePage(id,status);
+        var response=reconcile(token,id);
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("RECONCILED",status.equals("PHONE_PENDING") ? "WAITING_FOR_PHONE" : status.equals("FAILED") ? "INVALID" : status);
+        assertThat(request("GET","/api/reservation-processes/"+id+"/phone-request",null,token).statusCode()).isEqualTo(204);
+    }
+    @ParameterizedTest @ValueSource(strings={"owner","professional","date","time","reservation"})
+    void mismatchedRemoteReservationCannotMutateProcess(String field) throws Exception {
+        String token=holdUser(); String id=confirmedProcess(token); var r=remoteAppointment(id,"CANCELLED");
+        var changed=new ar.edu.programacion2.booking.appointments.Appointment(field.equals("reservation") ? 9999 : r.reservationId(),r.reservationProcessId(),
+            field.equals("owner") ? "other" : r.externalPatientId(),field.equals("professional") ? 9999 : r.professionalId(),
+            field.equals("date") ? r.appointmentDate().plusDays(1) : r.appointmentDate(),field.equals("time") ? r.startTime().plusMinutes(1) : r.startTime(),
+            r.endTime(),r.status(),r.confirmedAt(),r.cancelledAt());
+        org.mockito.Mockito.when(appointmentGateway.find(r.externalPatientId(),0,100)).thenReturn(
+            new ar.edu.programacion2.booking.appointments.AppointmentGateway.Page(java.util.List.of(changed),1,0,100));
+        assertThat(reconcile(token,id).statusCode()).isEqualTo(503);
+        assertThat(request("GET","/api/reservation-processes/"+id,null,token).body()).contains("CONFIRMED");
+    }
+    @Test void reconciliationSearchesFurtherPagesAndBoundsRequests() throws Exception {
+        String token=holdUser(); String id=createHeldProcess(token); requestedPhone(id); var r=remoteAppointment(id,"CONFIRMED");
+        org.mockito.Mockito.when(appointmentGateway.find(r.externalPatientId(),0,100)).thenReturn(
+            new ar.edu.programacion2.booking.appointments.AppointmentGateway.Page(java.util.List.of(),101,0,100));
+        org.mockito.Mockito.when(appointmentGateway.find(r.externalPatientId(),1,100)).thenReturn(
+            new ar.edu.programacion2.booking.appointments.AppointmentGateway.Page(java.util.List.of(r),101,1,100));
+        assertThat(reconcile(token,id).body()).contains("RECONCILED","CONFIRMED");
+        org.mockito.Mockito.reset(appointmentGateway);
+        org.mockito.Mockito.when(appointmentGateway.find(org.mockito.ArgumentMatchers.eq(r.externalPatientId()),org.mockito.ArgumentMatchers.anyInt(),org.mockito.ArgumentMatchers.eq(100)))
+            .thenAnswer(call -> new ar.edu.programacion2.booking.appointments.AppointmentGateway.Page(java.util.List.of(),3000,call.getArgument(1),100));
+        assertThat(reconcile(token,id).body()).contains("SCAN_LIMIT_REACHED");
+        org.mockito.Mockito.verify(appointmentGateway,org.mockito.Mockito.times(20)).find(org.mockito.ArgumentMatchers.eq(r.externalPatientId()),org.mockito.ArgumentMatchers.anyInt(),org.mockito.ArgumentMatchers.eq(100));
+    }
 }
