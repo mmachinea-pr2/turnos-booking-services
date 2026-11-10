@@ -21,7 +21,7 @@ public class ConfirmHoldService {
         var claim = repository.claimConfirmation(userId,processId,request,clock.instant());
         if (!claim.send()) {
             return switch (claim.process().status()) {
-                case CONFIRMING, WAITING_FOR_PHONE, CONFIRMATION_UNCERTAIN, EXPIRED, REJECTED -> claim.process();
+                case CONFIRMING, WAITING_FOR_PHONE, CONFIRMATION_UNCERTAIN, EXPIRED, REJECTED, CONFIRMED, CANCELLED, INVALID -> claim.process();
                 default -> throw new HoldConflictException("HOLD_NOT_CONFIRMABLE");
             };
         }

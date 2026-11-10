@@ -46,7 +46,7 @@ public class HoldRepository {
         Integer blocking = jdbc.queryForObject("""
             SELECT COUNT(*) FROM reservation_process WHERE user_id = ? AND professional_id = ?
             AND appointment_date = ? AND start_time = ?
-            AND (status IN ('CREATING', 'UNCERTAIN', 'CONFIRMING', 'WAITING_FOR_PHONE', 'CONFIRMATION_UNCERTAIN') OR (status = 'HELD' AND expires_at > ?))
+            AND (status IN ('CREATING', 'UNCERTAIN', 'CONFIRMING', 'WAITING_FOR_PHONE', 'CONFIRMATION_UNCERTAIN', 'CONFIRMED', 'INVALID') OR (status = 'HELD' AND expires_at > ?))
             """, Integer.class, userId, request.professionalId(), request.date(), request.startTime(), Timestamp.from(now));
         if (blocking != null && blocking > 0) throw new HoldConflictException("PROCESS_ALREADY_PENDING");
         String id = UUID.randomUUID().toString();

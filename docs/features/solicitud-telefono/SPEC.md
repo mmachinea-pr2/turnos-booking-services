@@ -33,9 +33,8 @@ se esperaba el bloqueo del proceso.
 - Proceso desconocido o aún en creación/HELD: conservar PENDING, sin inventar un
   propietario ni repetir peticiones a cátedra. Cada 30 segundos se revisan hasta 100
   eventos cuyo proceso ya es correlacionable y salió de esos estados.
-- Otros tipos con envoltura válida se conservan completos como DEFERRED. Sus efectos
-  se implementarán en el bloque de resultados finales; no se descartan al confirmar
-  el offset. Esa implementación deberá reprocesar las filas DEFERRED.
+- Otros tipos con envoltura válida se conservan completos como DEFERRED. Los resultados conocidos se procesan desde la [issue #20](../resultados-reservas/SPEC.md),
+  que también recupera sus filas DEFERRED anteriores. Los tipos desconocidos no se descartan.
 
 Un proceso cuyo hold remoto nunca pudo recuperarse permanece pendiente hasta que
 exista una correlación segura. No hay un reintento remoto automático.
@@ -81,5 +80,5 @@ Las pruebas usan MySQL y Kafka temporales en Docker y un servidor HTTP local par
 las integraciones REST. No producen reservas ni eventos en el servidor de cátedra.
 La verificación real contra ese servidor sigue pendiente.
 
-Este bloque recibe la solicitud. El envío de AdditionalInformationSubmitted y el
-procesamiento de confirmación/rechazo/expiración finales corresponden al siguiente bloque.
+Este bloque recibe la solicitud. El envío de AdditionalInformationSubmitted se implementa
+en la [issue #18](../enviar-telefono/SPEC.md). Los resultados finales se procesan en la [issue #20](../resultados-reservas/SPEC.md).

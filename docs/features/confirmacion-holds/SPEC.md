@@ -70,4 +70,4 @@ El vencimiento anterior del hold no se usa para expirar automáticamente CONFIRM
 
 Se reutilizan BOOKING_CATEDRA_BASE_URL y BOOKING_CATEDRA_TOKEN. Aplicar V3 al reiniciar o reconstruir booking. Una prueba contra cátedra genera efectos reales; la suite utiliza únicamente HTTP local y MySQL temporal.
 
-La recepción de AdditionalInformationRequested se agrega en la [issue #16](../solicitud-telefono/SPEC.md). El envío del teléfono y el resultado final siguen pendientes. WAITING_FOR_PHONE no equivale a CONFIRMED.
+La recepción de AdditionalInformationRequested se agrega en la [issue #16](../solicitud-telefono/SPEC.md). El envío del teléfono se agrega en la [issue #18](../enviar-telefono/SPEC.md); el resultado recibido por Kafka se procesa en la [issue #20](../resultados-reservas/SPEC.md). WAITING_FOR_PHONE no equivale a CONFIRMED.
