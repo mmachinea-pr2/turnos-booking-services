@@ -61,6 +61,12 @@ public class BookingOutcomeHandler {
             """,next,reservation,event.eventId(),event.type(),Timestamp.from(BookingEvent.instant(payload,"occurredAt")),
             payload.path("requestEventId").asString(),message,reason,CONFIRMED.equals(event.type()) || CANCELLED.equals(event.type()) ? null : reason,REJECTED.equals(event.type()) ? event.eventId() : null,
             expiry,Timestamp.from(clock.instant()),process.get("id"));
+        if (CANCELLED.equals(event.type())) {
+            jdbc.update("""
+                UPDATE reservation_process SET cancellation_status = 'CANCELLED', cancellation_error = NULL,
+                cancelled_at = ? WHERE id = ?
+                """,Timestamp.from(BookingEvent.instant(payload,"occurredAt")),process.get("id"));
+        }
         jdbc.update("""
             UPDATE phone_submission_outbox SET delivery_status = 'STOPPED',lease_token = NULL,lease_until = NULL
             WHERE process_id = ? AND delivery_status IN ('PENDING','SENDING')
@@ -88,7 +94,8 @@ public class BookingOutcomeHandler {
     }
     private boolean terminalBlocks(String type, String status) {
         return switch(status) {
-            case "CANCELLED", "EXPIRED", "INVALID" -> true;
+            case "CANCELLED" -> !CANCELLED.equals(type);
+            case "EXPIRED", "INVALID" -> true;
             case "CONFIRMED" -> !CANCELLED.equals(type);
             default -> false;
         };

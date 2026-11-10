@@ -101,11 +101,11 @@ Se genera `target/turnos-booking-services-0.0.1-SNAPSHOT.jar`, ejecutable con `j
 
 ## Migraciones
 
-Flyway está habilitado y Hibernate utiliza `validate`, nunca `create` ni `update`. Las migraciones de `src/main/resources/db/migration` crean usuarios (V1), procesos de reserva (V2), datos de confirmación (V3) e inbox de eventos (V4) y envíos de teléfono pendientes (V5) y resultados de reservas (V6). Las pruebas aplican esas mismas migraciones sobre MySQL temporal.
+Flyway está habilitado y Hibernate utiliza `validate`, nunca `create` ni `update`. Las migraciones de `src/main/resources/db/migration` crean usuarios (V1), procesos de reserva (V2), datos de confirmación (V3) e inbox de eventos (V4) y envíos de teléfono pendientes (V5) y resultados de reservas (V6) y cancelaciones (V7). Las pruebas aplican esas mismas migraciones sobre MySQL temporal.
 
 ## Pendientes
 
-Protección JWT de catálogo, solicitud de cancelación y reconciliación REST de reservas pendientes.
+Protección JWT de catálogo y reconciliación REST de reservas pendientes.
 
 ## CI y cobertura
 
@@ -150,3 +150,11 @@ y rechazos de teléfono. GET `/api/reservation-processes/{id-local}/result` perm
 propietario consultar el resultado y el identificador de reserva. Si se rechaza el
 telefono, puede corregirse mediante `rejectionEventId`, sin reiniciar el proceso.
 Ver [estados, correcciones y recuperación](docs/features/resultados-reservas/SPEC.md).
+
+### Cancelación de reservas
+
+POST `/api/reservation-processes/{id-local}/cancel` permite al propietario cancelar
+una reserva confirmada, con motivo opcional de hasta 500 caracteres. El intento se
+guarda antes de llamar a cátedra. GET `/api/reservation-processes/{id-local}/cancellation`
+permite consultar su resultado, incluso si la respuesta remota fue incierta.
+Ver [contrato y coordinación REST/Kafka](docs/features/cancelar-reservas/SPEC.md).
