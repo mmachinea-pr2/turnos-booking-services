@@ -39,7 +39,8 @@ public record BookingEvent(String eventId, String processId, String type, JsonNo
             case BookingOutcomeHandler.CONFIRMED, BookingOutcomeHandler.CANCELLED -> {
                 positiveLong(node,"reservationId");
                 positiveLong(node,"professionalId");
-                java.time.LocalDate.parse(text(node,"date",10));
+                String date = text(node,"date",10);
+                if (!java.time.LocalDate.parse(date).toString().equals(date)) throw invalid();
                 if (java.time.LocalTime.parse(text(node,"startTime",18)).getNano() != 0) throw invalid();
                 String expected = BookingOutcomeHandler.CONFIRMED.equals(type) ? "CONFIRMED" : "CANCELLED";
                 if (!expected.equals(text(node,"status",24))) throw invalid();
