@@ -27,7 +27,8 @@ deliveryStatus, attempts y publishedAt, sin exponer el teléfono.
 Repetir el mismo requestEventId y teléfono normalizado devuelve el envío existente,
 incluso si ya venció o cambió el proceso, sin volver a encolarlo. Enviar otro teléfono
 para esa misma solicitud produce 409 PHONE_ALREADY_SUBMITTED. Se puede enviar otro
-número cuando cátedra emita una solicitud nueva con otro requestEventId.
+número cuando cátedra emita una solicitud nueva con otro requestEventId, o después
+de un rechazo utilizando rejectionEventId según la [issue #20](../resultados-reservas/SPEC.md).
 
 Otros errores: 409 PHONE_NOT_EXPECTED (estado incompatible), PHONE_REQUEST_CHANGED
 (solicitud ausente o distinta), PHONE_REQUEST_EXPIRED (solicitud vencida); 404
@@ -116,6 +117,5 @@ Pruebas Kafka local: publicación real con clave y contenido del contrato, adem�
 de las pruebas existentes del consumidor. No se envían teléfonos al servidor de
 cátedra en las pruebas automatizadas.
 
-Pendiente: prueba real con cátedra y procesamiento de AppointmentConfirmed,
-AdditionalInformationRejected, expiración y demás resultados. Los eventos finales
-recibidos continúan guardados como DEFERRED por el consumidor de la issue #16.
+Pendiente: prueba real con cátedra. El procesamiento de resultados y la recuperación
+de los eventos DEFERRED conocidos se incorporan en la [issue #20](../resultados-reservas/SPEC.md).

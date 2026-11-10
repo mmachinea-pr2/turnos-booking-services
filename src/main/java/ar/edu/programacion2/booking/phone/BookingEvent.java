@@ -24,11 +24,40 @@ public record BookingEvent(String eventId, String processId, String type, JsonNo
                 if (!"PHONE_NUMBER".equals(text(node, "requiredField", 100))
                         || !instant(node, "expiresAt").isAfter(instant(node, "occurredAt"))) throw invalid();
             }
+            if (BookingOutcomeHandler.TYPES.contains(type)) validateResult(type,node);
             return new BookingEvent(id, process, type, node);
         } catch (RuntimeException exception) {
             // Never include the raw event or parser exception in logs.
             throw invalid();
         }
+    }
+    private static void validateResult(String type, JsonNode node) {
+        text(node,"groupId",100);
+        text(node,"holdId",100);
+        text(node,"requestEventId",100);
+        switch(type) {
+            case BookingOutcomeHandler.CONFIRMED, BookingOutcomeHandler.CANCELLED -> {
+                positiveLong(node,"reservationId");
+                positiveLong(node,"professionalId");
+                String date = text(node,"date",10);
+                if (!java.time.LocalDate.parse(date).toString().equals(date)) throw invalid();
+                if (java.time.LocalTime.parse(text(node,"startTime",18)).getNano() != 0) throw invalid();
+                String expected = BookingOutcomeHandler.CONFIRMED.equals(type) ? "CONFIRMED" : "CANCELLED";
+                if (!expected.equals(text(node,"status",24))) throw invalid();
+                if (BookingOutcomeHandler.CANCELLED.equals(type) && !node.path("reason").isNull()) text(node,"reason",2000);
+            }
+            case BookingOutcomeHandler.REJECTED -> {
+                text(node,"reason",60);
+                text(node,"message",2000);
+                if (!instant(node,"expiresAt").isAfter(instant(node,"occurredAt"))) throw invalid();
+            }
+            default -> text(node,"reason",60);
+        }
+    }
+    private static void positiveLong(JsonNode node, String field) {
+        var value=node.path(field);
+        if (!value.isIntegralNumber() || value.bigIntegerValue().signum() <= 0
+                || value.bigIntegerValue().compareTo(java.math.BigInteger.valueOf(Long.MAX_VALUE)) > 0) throw invalid();
     }
     static String text(JsonNode node, String name, int maximum) {
         var field = node.path(name);

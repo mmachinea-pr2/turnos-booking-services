@@ -18,7 +18,8 @@ public class ConfirmHoldController {
             @Valid @RequestBody ConfirmHoldRequest request) {
         var process = service.confirm(jwt.getSubject(),id.toString(),request);
         int status = switch(process.status()) {
-            case EXPIRED, REJECTED -> 409;
+            case EXPIRED, REJECTED, CANCELLED, INVALID -> 409;
+            case CONFIRMED -> 200;
             default -> 202;
         };
         return ResponseEntity.status(status).cacheControl(CacheControl.noStore())
