@@ -42,7 +42,7 @@ class BookingApplicationTests {
     @Test
     void flywayCreatesUserSchema() {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1", Integer.class))
-            .isEqualTo(6);
+            .isEqualTo(7);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'application_user'", Integer.class))
             .isEqualTo(1);
     }
@@ -1117,5 +1117,93 @@ class BookingApplicationTests {
         node.put("reservationId",9999);
         bookingInbox.receive(ar.edu.programacion2.booking.phone.BookingEvent.parse(rejection.processId(),node.toString()));
         assertThat(jdbc.queryForObject("SELECT reservation_id FROM reservation_process WHERE id = ?",Long.class,id)).isNull();
+    }
+
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    ar.edu.programacion2.booking.cancellation.CancellationGateway cancellationGateway;
+    private String confirmedProcess(String token) throws Exception {
+        String id=createHeldProcess(token); requestedPhone(id);
+        bookingInbox.receive(resultEvent(id,"AppointmentConfirmed","2030-01-01T10:10:00Z"));
+        return id;
+    }
+    private HttpResponse<String> cancel(String token,String id,String body) throws Exception {
+        return request("POST","/api/reservation-processes/"+id+"/cancel",body,token);
+    }
+    @Test void cancellationPersistsBeforeHttpAndIsIdempotentWithoutKafka() throws Exception {
+        String token=holdUser(); String id=confirmedProcess(token);
+        assertThat(request("GET","/api/reservation-processes/"+id+"/cancellation",null,token).statusCode()).isEqualTo(204);
+        org.mockito.Mockito.when(cancellationGateway.cancel(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> {
+            assertThat(jdbc.queryForObject("SELECT cancellation_status FROM reservation_process WHERE id = ?",String.class,id)).isEqualTo("REQUESTING");
+            return new ar.edu.programacion2.booking.cancellation.CancellationGateway.Outcome("CANCELLED",java.time.Instant.parse("2030-01-01T10:11:00Z"),null);
+        });
+        var response=cancel(token,id,"{\"reason\":\"Cambio\",\"reservationProcessId\":\"forged\"}");
+        assertThat(response.statusCode()).isEqualTo(200); assertThat(response.body()).contains("CANCELLED","2030-01-01T10:11:00Z").doesNotContain("forged");
+        assertThat(response.headers().firstValue("Cache-Control").orElse("")).contains("no-store");
+        assertThat(cancel(token,id,null).statusCode()).isEqualTo(200);
+        org.mockito.Mockito.verify(cancellationGateway,org.mockito.Mockito.times(1)).cancel(org.mockito.ArgumentMatchers.any());
+        var event=resultEvent(id,"AppointmentCancelled","2030-01-01T10:11:00Z"); bookingInbox.receive(event);
+        assertThat(inboxState(event.eventId())).isEqualTo("APPLIED");
+        assertThat(request("GET","/api/reservation-processes/"+id+"/result",null,token).body()).contains(event.eventId(),"AppointmentCancelled");
+    }
+    @Test void cancellationChecksOwnershipAccountStateAndInput() throws Exception {
+        String token=holdUser(); String id=confirmedProcess(token); String other=holdUser();
+        assertThat(cancel(other,id,null).statusCode()).isEqualTo(404);
+        assertThat(cancel(null,id,null).statusCode()).isEqualTo(401);
+        assertThat(cancel(token,java.util.UUID.randomUUID().toString(),null).statusCode()).isEqualTo(404);
+        assertThat(cancel(token,id,"{bad}").statusCode()).isEqualTo(400);
+        assertThat(cancel(token,id,json.writeValueAsString(java.util.Map.of("reason","x".repeat(501)))).statusCode()).isEqualTo(400);
+        assertThat(cancel(token,createHeldProcess(holdUser()),null).statusCode()).isEqualTo(404);
+        String heldToken=holdUser(); String held=createHeldProcess(heldToken);
+        assertThat(cancel(heldToken,held,null).statusCode()).isEqualTo(409);
+        assertThat(request("GET","/api/reservation-processes/"+id+"/cancellation",null,other).statusCode()).isEqualTo(404);
+        jdbc.update("UPDATE application_user SET activated = FALSE WHERE id = (SELECT user_id FROM reservation_process WHERE id = ?)",id);
+        assertThat(cancel(token,id,null).statusCode()).isEqualTo(401);
+        org.mockito.Mockito.verifyNoInteractions(cancellationGateway);
+    }
+    @Test void uncertainCancellationDoesNotRepeatAndKafkaResolvesIt() throws Exception {
+        String token=holdUser(); String id=confirmedProcess(token);
+        org.mockito.Mockito.when(cancellationGateway.cancel(org.mockito.ArgumentMatchers.any()))
+            .thenReturn(ar.edu.programacion2.booking.cancellation.CancellationGateway.Outcome.uncertain());
+        assertThat(cancel(token,id,"{}").statusCode()).isEqualTo(202);
+        assertThat(cancel(token,id,"{}").body()).contains("UNCERTAIN","CONFIRMED");
+        assertThat(cancel(token,id,"{\"reason\":\"changed\"}").body()).contains("CANCELLATION_DATA_CHANGED");
+        org.mockito.Mockito.verify(cancellationGateway,org.mockito.Mockito.times(1)).cancel(org.mockito.ArgumentMatchers.any());
+        bookingInbox.receive(resultEvent(id,"AppointmentCancelled","2030-01-01T10:12:00Z"));
+        assertThat(request("GET","/api/reservation-processes/"+id+"/cancellation",null,token).body()).contains("CANCELLED").doesNotContain("CANCELLATION_RESULT_UNKNOWN");
+    }
+    @Test void kafkaCancellationBeforeRestReplyWins() throws Exception {
+        String token=holdUser(); String id=confirmedProcess(token);
+        org.mockito.Mockito.when(cancellationGateway.cancel(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> {
+            bookingInbox.receive(resultEvent(id,"AppointmentCancelled","2030-01-01T10:12:00Z"));
+            return ar.edu.programacion2.booking.cancellation.CancellationGateway.Outcome.uncertain();
+        });
+        var response=cancel(token,id,null);
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("CANCELLED","2030-01-01T10:12:00Z").doesNotContain("CANCELLATION_RESULT_UNKNOWN");
+    }
+    @Test void rejectedCancellationIsVisibleWithoutChangingReservation() throws Exception {
+        String token=holdUser(); String id=confirmedProcess(token);
+        org.mockito.Mockito.when(cancellationGateway.cancel(org.mockito.ArgumentMatchers.any())).thenReturn(
+            new ar.edu.programacion2.booking.cancellation.CancellationGateway.Outcome("REJECTED",null,"RESERVATION_NOT_CANCELLABLE"));
+        assertThat(cancel(token,id,null).statusCode()).isEqualTo(409);
+        assertThat(cancel(token,id,null).body()).contains("CONFIRMED","RESERVATION_NOT_CANCELLABLE");
+        org.mockito.Mockito.verify(cancellationGateway,org.mockito.Mockito.times(1)).cancel(org.mockito.ArgumentMatchers.any());
+    }
+    @Test void concurrentCancellationSendsOnlyOnce() throws Exception {
+        String token=holdUser(); String id=confirmedProcess(token);
+        var entered=new java.util.concurrent.CountDownLatch(1); var release=new java.util.concurrent.CountDownLatch(1);
+        org.mockito.Mockito.when(cancellationGateway.cancel(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> {
+            entered.countDown(); release.await(10,java.util.concurrent.TimeUnit.SECONDS);
+            return ar.edu.programacion2.booking.cancellation.CancellationGateway.Outcome.uncertain();
+        });
+        try(var executor=java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            var first=executor.submit(() -> cancel(token,id,null));
+            try {
+                assertThat(entered.await(10,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                var repeated=cancel(token,id,null); assertThat(repeated.statusCode()).isEqualTo(202); assertThat(repeated.body()).contains("REQUESTING");
+            } finally { release.countDown(); }
+            assertThat(first.get().statusCode()).isEqualTo(202);
+        }
+        org.mockito.Mockito.verify(cancellationGateway,org.mockito.Mockito.times(1)).cancel(org.mockito.ArgumentMatchers.any());
     }
 }
