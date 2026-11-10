@@ -106,5 +106,5 @@ vuelo no puede revocarse. La cátedra sigue validando el evento recibido.
 Pruebas con MySQL y Kafka temporales: contratos, propiedad, estados, correlación,
 duplicados, orden, cancelación adelantada, recuperación de DEFERRED, corrección de
 telefono y protección frente a trabajadores atrasados. La integración real con
-cátedra y la reconciliación REST siguen pendientes. No se implementa aquí el endpoint
-para solicitar una cancelación: se procesa la notificación recibida.
+cátedra y la reconciliación REST siguen pendientes. El endpoint para solicitar una cancelación se implementa en la
+[issue #22](../cancelar-reservas/SPEC.md).
