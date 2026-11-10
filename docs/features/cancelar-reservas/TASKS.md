@@ -9,5 +9,5 @@
 - [x] Agregar pruebas y documentación.
 - [ ] Verificar contra cátedra con una reserva real.
 
-Recuperación REST de intentos pendientes/rechazados en otra issue.
+La issue #24 agrega consulta REST manual para detectar una cancelación completada. No reenvía intentos pendientes/rechazados.
 Commit, push y PR a cargo de la autora.
