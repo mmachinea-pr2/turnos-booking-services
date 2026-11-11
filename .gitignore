@@ -32,3 +32,8 @@ target/
 *.iml
 ChatGPT/
 chatgpt/
+
+!.env.integration.example
+
+__pycache__/
+*.pyc

@@ -1,0 +1,151 @@
+# Ejecutar con --env-file .env.integration. Repositorios hermanos por defecto.
+name: machinea-turnos-integration
+services:
+  catalog-db:
+    image: mysql:8.4.8
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:?Completar DB_NAME en .env}
+      MYSQL_USER: ${DB_USER:?Completar DB_USER en .env}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Completar DB_PASSWORD en .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Completar MYSQL_ROOT_PASSWORD en
+        .env}
+    volumes:
+    - catalog_mysql_data:/var/lib/mysql
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - MYSQL_PWD=$$MYSQL_PASSWORD mysql -h 127.0.0.1 -u $$MYSQL_USER $$MYSQL_DATABASE
+        -e 'SELECT 1' >/dev/null 2>&1
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks:
+    - catalog-data
+  catalog:
+    build: ${CATALOG_REPOSITORY:-../turnos-catalog-service}
+    environment:
+      DB_HOST: catalog-db
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:?Completar DB_NAME en .env}
+      DB_USER: ${DB_USER:?Completar DB_USER en .env}
+      DB_PASSWORD: ${DB_PASSWORD:?Completar DB_PASSWORD en .env}
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8080
+      CATALOG_JWT_SECRET: ${BOOKING_JWT_SECRET:?Completar BOOKING_JWT_SECRET}
+      CATALOG_JWT_ISSUER: ${BOOKING_JWT_ISSUER:-turnos-booking}
+      CATALOG_JWT_AUDIENCE: ${BOOKING_JWT_AUDIENCE:-turnos-backends}
+      CATEDRA_REST_ENABLED: ${CATEDRA_REST_ENABLED:-false}
+      CATEDRA_API_BASE_URL: ${CATEDRA_API_BASE_URL:-}
+      CATEDRA_JWT: ${CATEDRA_JWT:-}
+      CATEDRA_CONNECT_TIMEOUT: ${CATEDRA_CONNECT_TIMEOUT:-5s}
+      CATEDRA_READ_TIMEOUT: ${CATEDRA_READ_TIMEOUT:-10s}
+      CATEDRA_REDIS_ENABLED: ${CATEDRA_REDIS_ENABLED:-false}
+      CATEDRA_REDIS_HOST: ${CATEDRA_REDIS_HOST:-}
+      CATEDRA_REDIS_PORT: ${CATEDRA_REDIS_PORT:-6379}
+      CATEDRA_REDIS_USERNAME: ${CATEDRA_REDIS_USERNAME:-}
+      CATEDRA_REDIS_PASSWORD: ${CATEDRA_REDIS_PASSWORD:-}
+      CATEDRA_REDIS_TIMEOUT: ${CATEDRA_REDIS_TIMEOUT:-5s}
+      CATALOG_PERIODIC_ENABLED: ${CATALOG_PERIODIC_ENABLED:-false}
+      CATALOG_PERIODIC_INTERVAL: ${CATALOG_PERIODIC_INTERVAL:-60s}
+      CATALOG_PERIODIC_INITIAL_DELAY: ${CATALOG_PERIODIC_INITIAL_DELAY:-5s}
+      CATEDRA_KAFKA_ENABLED: ${CATEDRA_KAFKA_ENABLED:-false}
+      CATEDRA_KAFKA_BOOTSTRAP_SERVERS: ${CATEDRA_KAFKA_BOOTSTRAP_SERVERS:-}
+      CATEDRA_KAFKA_CATALOG_TOPIC: ${CATEDRA_KAFKA_CATALOG_TOPIC:-}
+      CATEDRA_KAFKA_CONSUMER_GROUP_ID: ${CATEDRA_KAFKA_CONSUMER_GROUP_ID:-}
+    ports:
+    - 127.0.0.1:${INTEGRATION_CATALOG_PORT:-18080}:8080
+    depends_on:
+      catalog-db:
+        condition: service_healthy
+    networks:
+    - backend
+    - catalog-data
+    healthcheck:
+      test:
+      - CMD
+      - bash
+      - -ec
+      - 'exec 3<>/dev/tcp/127.0.0.1/8080; printf ''GET /actuator/health HTTP/1.0\r\nHost:
+        localhost\r\n\r\n'' >&3; head -n1 <&3 | grep -q '' 200'''
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 60s
+  booking-db:
+    image: mysql:8.4.8
+    environment:
+      MYSQL_DATABASE: ${BOOKING_DB_NAME:?Completar BOOKING_DB_NAME en .env}
+      MYSQL_USER: ${BOOKING_DB_USER:?Completar BOOKING_DB_USER en .env}
+      MYSQL_PASSWORD: ${BOOKING_DB_PASSWORD:?Completar BOOKING_DB_PASSWORD en .env}
+      MYSQL_ROOT_PASSWORD: ${BOOKING_MYSQL_ROOT_PASSWORD:?Completar BOOKING_MYSQL_ROOT_PASSWORD
+        en .env}
+    volumes:
+    - booking_mysql_data:/var/lib/mysql
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - MYSQL_PWD=$$MYSQL_PASSWORD mysql -h 127.0.0.1 -u $$MYSQL_USER $$MYSQL_DATABASE
+        -e 'SELECT 1' >/dev/null 2>&1
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks:
+    - booking-data
+  booking:
+    build: .
+    environment:
+      BOOKING_DB_HOST: booking-db
+      BOOKING_DB_PORT: 3306
+      BOOKING_DB_NAME: ${BOOKING_DB_NAME:?Completar BOOKING_DB_NAME en .env}
+      BOOKING_DB_USER: ${BOOKING_DB_USER:?Completar BOOKING_DB_USER en .env}
+      BOOKING_DB_PASSWORD: ${BOOKING_DB_PASSWORD:?Completar BOOKING_DB_PASSWORD en
+        .env}
+      BOOKING_JWT_SECRET: ${BOOKING_JWT_SECRET:?Completar BOOKING_JWT_SECRET en .env}
+      BOOKING_JWT_ISSUER: ${BOOKING_JWT_ISSUER:-turnos-booking}
+      BOOKING_JWT_AUDIENCE: ${BOOKING_JWT_AUDIENCE:-turnos-backends}
+      BOOKING_CORS_ALLOWED_ORIGINS: ${BOOKING_CORS_ALLOWED_ORIGINS:-}
+      BOOKING_JWT_TTL: ${BOOKING_JWT_TTL:-30m}
+      BOOKING_CATALOG_BASE_URL: http://catalog:8080
+      BOOKING_CATEDRA_BASE_URL: ${BOOKING_CATEDRA_BASE_URL:-http://172.17.201.1:8090}
+      BOOKING_CATEDRA_TOKEN: ${BOOKING_CATEDRA_TOKEN:-}
+      BOOKING_AVAILABILITY_ZONE: ${BOOKING_AVAILABILITY_ZONE:-America/Argentina/Mendoza}
+      BOOKING_CATEDRA_GROUP_ID: ${BOOKING_CATEDRA_GROUP_ID:-proyecto-pilar-machinea}
+      BOOKING_KAFKA_PHONE_TOPIC: ${BOOKING_KAFKA_PHONE_TOPIC:-catedra.turnos.telefono.proyecto-pilar-machinea}
+      BOOKING_KAFKA_ENABLED: ${BOOKING_KAFKA_ENABLED:-false}
+      BOOKING_KAFKA_BOOTSTRAP_SERVERS: ${BOOKING_KAFKA_BOOTSTRAP_SERVERS:-172.17.201.1:9094}
+      BOOKING_KAFKA_ACTIONS_TOPIC: ${BOOKING_KAFKA_ACTIONS_TOPIC:-alumnos.turnos.acciones.proyecto-pilar-machinea}
+      BOOKING_KAFKA_CONSUMER_GROUP: ${BOOKING_KAFKA_CONSUMER_GROUP:-alumnos-proyecto-pilar-machinea}
+      BOOKING_APP_HOST: 0.0.0.0
+      BOOKING_APP_PORT: 8081
+    ports:
+    - 127.0.0.1:${INTEGRATION_BOOKING_PORT:-18081}:8081
+    depends_on:
+      booking-db:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+    networks:
+    - backend
+    - booking-data
+    healthcheck:
+      test:
+      - CMD
+      - bash
+      - -ec
+      - 'exec 3<>/dev/tcp/127.0.0.1/8081; printf ''GET /actuator/health HTTP/1.0\r\nHost:
+        localhost\r\n\r\n'' >&3; head -n1 <&3 | grep -q '' 200'''
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 60s
+volumes:
+  catalog_mysql_data: {}
+  booking_mysql_data: {}
+networks:
+  backend: {}
+  catalog-data:
+    internal: true
+  booking-data:
+    internal: true

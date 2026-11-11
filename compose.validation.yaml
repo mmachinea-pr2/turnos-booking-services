@@ -1,0 +1,52 @@
+# SOLO pruebas locales con datos ficticios. Combinar con compose.integration.yaml.
+services:
+  catedra-stub:
+    image: python:3.12-slim
+    command: [python, /tests/catedra_stub.py]
+    volumes:
+      - ./src/test/integration:/tests:ro
+    ports:
+      - 127.0.0.1:18090:8090
+    networks: [backend]
+  kafka:
+    image: apache/kafka:3.8.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    networks: [backend]
+    healthcheck:
+      test: [CMD, /opt/kafka/bin/kafka-topics.sh, --bootstrap-server, kafka:9092, --list]
+      interval: 10s
+      timeout: 10s
+      retries: 18
+      start_period: 20s
+  catalog:
+    environment:
+      CATEDRA_REST_ENABLED: 'true'
+      CATEDRA_API_BASE_URL: http://catedra-stub:8090
+      CATEDRA_JWT: local-test-only
+      CATEDRA_REDIS_ENABLED: 'false'
+      CATEDRA_KAFKA_ENABLED: 'false'
+      CATALOG_PERIODIC_ENABLED: 'false'
+  booking:
+    environment:
+      BOOKING_CATEDRA_BASE_URL: http://catedra-stub:8090
+      BOOKING_CATEDRA_TOKEN: local-test-only
+      BOOKING_KAFKA_ENABLED: 'true'
+      BOOKING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      BOOKING_CATEDRA_GROUP_ID: proyecto-pilar-machinea
+      BOOKING_KAFKA_ACTIONS_TOPIC: alumnos.turnos.acciones.proyecto-pilar-machinea
+      BOOKING_KAFKA_PHONE_TOPIC: catedra.turnos.telefono.proyecto-pilar-machinea
+      BOOKING_KAFKA_CONSUMER_GROUP: local-validation-booking
+    depends_on:
+      kafka:
+        condition: service_healthy
