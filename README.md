@@ -178,3 +178,10 @@ de `.env.integration.example`; publica puertos locales 18080 y 18081.
 La prueba `bash scripts/validate-integration.sh` utiliza exclusivamente un simulador
 REST y Kafka local, datos ficticios y claves descartables. No crea reservas en cátedra.
 Ver [ejecución conjunta y validación](docs/features/integracion-docker/SPEC.md).
+
+## Documentación de arquitectura e integración
+
+- [Arquitectura, despliegue y decisiones de seguridad](docs/arquitectura.md).
+- [Contratos HTTP entre booking y catálogo](docs/contratos-entre-servicios.md).
+- [Modelo de datos y propiedad de cada servicio](docs/modelo-datos.md).
+- [Evidencia de validación y pruebas reales pendientes](docs/features/integracion-docker/VALIDATION.md).
