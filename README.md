@@ -167,3 +167,14 @@ y recupera el estado local cuando hay una correspondencia inequívoca. No repite
 solicitudes de creación, confirmación ni cancelación. Si no encuentra la reserva,
 conserva la incertidumbre.
 Ver [contrato, estados y límites](docs/features/consultar-recuperar-reservas/SPEC.md).
+
+### Ejecutar ambos backends en Docker
+
+`compose.integration.yaml` levanta catálogo y booking con bases separadas, JWT
+compartido y comunicación interna `http://catalog:8080`. Requiere el repositorio
+hermano de catálogo con seguridad JWT. Se configura con `.env.integration`, a partir
+de `.env.integration.example`; publica puertos locales 18080 y 18081.
+
+La prueba `bash scripts/validate-integration.sh` utiliza exclusivamente un simulador
+REST y Kafka local, datos ficticios y claves descartables. No crea reservas en cátedra.
+Ver [ejecución conjunta y validación](docs/features/integracion-docker/SPEC.md).
