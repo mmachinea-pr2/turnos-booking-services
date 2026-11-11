@@ -101,5 +101,7 @@ Ver [Compose y validación](features/integracion-docker/SPEC.md),
 [contratos entre servicios](contratos-entre-servicios.md) y
 [modelo de datos](modelo-datos.md).
 
-La prueba integral con simulador REST y Kafka local pasó. La prueba completa de
-reserva contra cátedra sigue pendiente por indisponibilidad del servidor.
+La prueba integral con simulador REST y Kafka local pasó. El flujo principal de
+reserva contra cátedra se completó el 2026-11-11, incluyendo teléfono por Kafka,
+confirmación, consulta propia y cancelación. Esto no acredita todos los escenarios
+de fallos, vencimientos o recuperación contra el servidor real.

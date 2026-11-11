@@ -74,3 +74,34 @@ Al restablecerse el servicio, autenticar nuevamente al usuario local si venció
 su JWT, consultar una fecha futura compatible con la agenda vigente y retomar
 el recorrido documentado en `SPEC.md`. No reutilizar un horario sin comprobar
 su disponibilidad actual.
+
+## Flujo principal completado contra cátedra — 2026-11-11
+
+Evidencia: respuestas de Postman compartidas por la alumna durante la ejecución
+manual con datos ficticios. Esta ejecución posterior completa el recorrido que
+había quedado interrumpido en las secciones anteriores.
+
+1. Autenticación local y consultas de catálogo con el JWT de booking.
+2. Disponibilidad del profesional 203 para el 2026-11-13: nueve intervalos de
+   veinte minutos entre 12:00 y 15:00.
+3. Creación de hold para 12:00: proceso local
+   `7f99eabe-cccd-4fad-96cf-ecc869809cd6`, estado `HELD`.
+4. Confirmación REST: `WAITING_FOR_PHONE`.
+5. Recepción Kafka: la consulta de solicitud de teléfono devolvió
+   `requiredField=PHONE_NUMBER` y su identificador de evento.
+6. Envío del teléfono ficticio: outbox inicialmente `PENDING`.
+7. Recepción de `AppointmentConfirmed`: reserva `5359`, estado `CONFIRMED`,
+   evento ocurrido a las `2026-11-11T23:44:26.282839Z`.
+8. Consulta autenticada de reservas: un elemento, reserva `5359`, mismo proceso,
+   profesional y horario, asociado al UUID del usuario que inició la operación.
+9. Cancelación de la reserva de prueba: proceso y cancelación `CANCELLED`,
+   `cancelledAt=2026-11-11T23:46:08.614947Z`, `errorCode=null`.
+
+El resultado confirmado demuestra que el intercambio de teléfono y resultado
+por Kafka se completó para este proceso, aunque la primera lectura de la outbox
+lo mostraba pendiente. La reserva de prueba terminó cancelada.
+
+No se incluyeron JWT, contraseñas ni teléfonos en esta evidencia. No se repitieron
+contra cátedra los escenarios de expiración, acceso cruzado, mensajes duplicados,
+reinicio con operaciones pendientes o discontinuidad del catálogo. Sus pruebas
+locales y la validación del flujo principal real son evidencias de distinto alcance.
