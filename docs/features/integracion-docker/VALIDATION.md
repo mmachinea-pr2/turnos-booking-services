@@ -126,3 +126,19 @@ Esto confirma la recepción del vencimiento desde cátedra y su aplicación al
 estado local. No se confirmó una reserva ni es necesario cancelar este proceso
 expirado. Esta prueba no mide el comportamiento frente a duplicados o reinicios,
 ni comprueba por sí sola la liberación del horario en la consulta de ocupaciones.
+
+## Aislamiento de lectura entre usuarios — 2026-11-11 (hora argentina)
+
+Evidencia: ejecución manual en Postman y confirmación del código HTTP por la
+alumna. Se registró y autenticó un segundo usuario ficticio distinto del dueño
+del proceso de expiración. Con su JWT se consultó:
+
+`GET /api/reservation-processes/c22fc212-0676-490b-9f6b-cb790aac7461`
+
+Resultado: HTTP **404 Not Found**, cuerpo `{"code":"PROCESS_NOT_FOUND"}`.
+La respuesta no expuso el estado ni los datos del proceso ajeno. No se incluyen
+JWT ni contraseñas en este documento.
+
+Esta ejecución verifica el aislamiento de lectura de un proceso existente.
+No equivale a probar manualmente todos los endpoints ni la cancelación cruzada;
+esos escenarios conservan la evidencia de las pruebas automatizadas locales.
