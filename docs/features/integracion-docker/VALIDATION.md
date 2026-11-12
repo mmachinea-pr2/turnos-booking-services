@@ -102,6 +102,27 @@ por Kafka se completó para este proceso, aunque la primera lectura de la outbox
 lo mostraba pendiente. La reserva de prueba terminó cancelada.
 
 No se incluyeron JWT, contraseñas ni teléfonos en esta evidencia. No se repitieron
-contra cátedra los escenarios de expiración, acceso cruzado, mensajes duplicados,
+en esa ejecución contra cátedra los escenarios de expiración, acceso cruzado, mensajes duplicados,
 reinicio con operaciones pendientes o discontinuidad del catálogo. Sus pruebas
 locales y la validación del flujo principal real son evidencias de distinto alcance.
+
+## Expiración sin enviar teléfono — 2026-11-11 (hora argentina)
+
+Evidencia: respuestas de Postman compartidas por la alumna. Se creó un nuevo
+hold del profesional 203 para el 2026-11-13 a las 12:20, proceso local
+`c22fc212-0676-490b-9f6b-cb790aac7461`.
+
+- Creación: `HELD`.
+- Confirmación REST: `WAITING_FOR_PHONE`.
+- Solicitud recibida por Kafka: `PHONE_NUMBER`, con vencimiento
+  `2026-11-12T01:17:26.946930205Z` (22:17:26 del 11 de noviembre, UTC-03:00).
+- No se envió el teléfono.
+- La consulta de resultado respondió HTTP 200 con estado `EXPIRED`, evento
+  `AppointmentProcessExpired`, motivo `HOLD_EXPIRED` y `reservationId=null`.
+- Evento `process-event-1adb136d-c32d-41c7-85ca-5e89256be181`, ocurrido a las
+  `2026-11-12T01:17:36.799050Z`, correlacionado con la solicitud de teléfono.
+
+Esto confirma la recepción del vencimiento desde cátedra y su aplicación al
+estado local. No se confirmó una reserva ni es necesario cancelar este proceso
+expirado. Esta prueba no mide el comportamiento frente a duplicados o reinicios,
+ni comprueba por sí sola la liberación del horario en la consulta de ocupaciones.
