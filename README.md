@@ -13,7 +13,7 @@ Proyecto integrador individual de Programación II, 2026. Se utilizan exclusivam
 
 ## Estado actual
 
-Base ejecutable con Spring Boot, salud, MySQL propio, Flyway y Docker Compose. Incluye registro y login con Argon2id y JWT, disponibilidad, creación y confirmación de holds, intercambio de teléfono y resultados por Kafka, cancelaciones, consulta de reservas propias y reconciliación manual por REST. La validación integral contra cátedra sigue pendiente.
+Base ejecutable con Spring Boot, salud, MySQL propio, Flyway y Docker Compose. Incluye registro y login con Argon2id y JWT, disponibilidad, creación y confirmación de holds, intercambio de teléfono y resultados por Kafka, cancelaciones, consulta de reservas propias y reconciliación manual por REST. El flujo principal de reserva, teléfono por Kafka, confirmación, consulta propia y cancelación se validó contra cátedra el 2026-11-11. Los escenarios de fallos tienen evidencia automatizada local; no se consideran todos verificados en el servidor real.
 
 ## Alcance previsto
 
@@ -179,3 +179,10 @@ de `.env.integration.example`; publica puertos locales 18080 y 18081.
 La prueba `bash scripts/validate-integration.sh` utiliza exclusivamente un simulador
 REST y Kafka local, datos ficticios y claves descartables. No crea reservas en cátedra.
 Ver [ejecución conjunta y validación](docs/features/integracion-docker/SPEC.md).
+
+## Documentación de arquitectura e integración
+
+- [Arquitectura, despliegue y decisiones de seguridad](docs/arquitectura.md).
+- [Contratos HTTP entre booking y catálogo](docs/contratos-entre-servicios.md).
+- [Modelo de datos y propiedad de cada servicio](docs/modelo-datos.md).
+- [Evidencia de validación y alcance de las pruebas](docs/features/integracion-docker/VALIDATION.md).
