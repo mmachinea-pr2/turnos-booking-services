@@ -3,7 +3,7 @@
 
 > Documento **generado automáticamente** por la cátedra de Programación II (UM): RepoSense + análisis de calidad de **7 dimensiones**. **No editar a mano**: se regenera en cada evaluación.
 > Rama evaluada: `main`. Análisis **heurístico** (regex + métricas) + build: es una criba para orientar la revisión, **no una nota**. La **documentación** del repositorio no se evalúa.
-> Generado: 2026-11-12.
+> Generado: 2026-11-17.
 
 ## 1. Veredicto
 
@@ -15,13 +15,12 @@
 | Código (LOC) | 4,342 |
 | Archivos de código | 79 |
 | Clases | 107 |
-| Código dentro de clases (%POO) | 89% |
-| Funciones fuera de clases | 1 |
+| Código dentro de clases (%POO) | 82% |
+| Funciones fuera de clases | 0 |
 | Duplicación (puerta) | 0.0% |
 | Duplicación lógica | 0.0% |
 | Duplicación de boilerplate | 6.4% |
 | Cobertura | 98% |
-| Tope duro aplicado a D1 | `SUELTAS` → D1 ≤ 60 |
 
 > Este informe **describe** lo que el análisis midió con los criterios ya establecidos de la materia. No es una nota.
 
@@ -31,10 +30,8 @@ Criterios de la cátedra (`CRITERIOS-CALIDAD.md`): **Aprobar** se juega con el p
 
 | Semáforo | Resultado |
 |---|---|
-| Aprobar (`estandar`) | **no cumple** — 7/11 |
+| Aprobar (`estandar`) | **cumple** — 8/11 |
 | Destacar (`exigente`) | **no cumple** — 7/11 |
-
-**Para aprobar, falta cumplir:** SOLID
 
 **Para destacar, falta cumplir:** SOLID
 
@@ -52,7 +49,7 @@ Cada dimensión indica **qué mide**, **por qué importa** y **tu resultado**. C
 
 | Dimensión | Peso | Puntaje |
 |:--|--:|--:|
-| **D1** Diseño OO, SOLID y patrones (20%) | 20% | 2 |
+| **D1** Diseño OO, SOLID y patrones (20%) | 20% | 3 |
 | **D2** Arquitectura hexagonal — backend (15%) | 15% | 36 |
 | **D3** Frontend KMP: MVVM y buenas prácticas (10%) | 10% | N/A |
 | **D4** Integración y contrato (10%) | 10% | 70 |
@@ -64,7 +61,7 @@ Cada dimensión indica **qué mide**, **por qué importa** y **tu resultado**. C
 
 - **Qué mide:** Métricas orientadas a objetos (clases, métodos, campos, cohesión, acoplamiento, herencia) y proxies de SOLID, más patrones de diseño.
 - **Por qué importa:** El eje de la materia es el buen uso de la POO y su arquitectura: un diseño con clases claras y poco acopladas es más fácil de entender, probar y cambiar.
-- **Tu resultado:** **2/100**
+- **Tu resultado:** **3/100**
 - **Para investigar la causa:**
     - ¿Se pensó el modelo de clases antes de codificar o se agrupó después?
     - ¿Qué clases concentran muchas responsabilidades a la vez?
@@ -108,7 +105,7 @@ Cada dimensión indica **qué mide**, **por qué importa** y **tu resultado**. C
 
 El análisis encontró las siguientes señales (archivo, sin número de línea a propósito):
 
-**SRP/responsabilidad** (66)
+**SRP/responsabilidad** (43)
 - clase 'AppointmentService' con baja cohesión (33%) — `src/main/java/ar/edu/programacion2/booking/appointments/AppointmentService.java`
 - método 'AppointmentService.reconcile' con complejidad 6 — `src/main/java/ar/edu/programacion2/booking/appointments/AppointmentService.java`
 - método 'AppointmentReconciliation.apply' de 43 líneas — `src/main/java/ar/edu/programacion2/booking/appointments/AppointmentReconciliation.java`
@@ -152,31 +149,8 @@ El análisis encontró las siguientes señales (archivo, sin número de línea a
 - método 'BookingEventInbox.receive' con complejidad 9 — `src/main/java/ar/edu/programacion2/booking/phone/BookingEventInbox.java`
 - método 'BookingEventInbox.apply' de 41 líneas — `src/main/java/ar/edu/programacion2/booking/phone/BookingEventInbox.java`
 - método 'BookingEventInbox.apply' con complejidad 14 — `src/main/java/ar/edu/programacion2/booking/phone/BookingEventInbox.java`
-- clase 'BookingApplicationTests' grande (LOC=1267, métodos=109, campos=3) — `src/test/java/ar/edu/programacion2/booking/BookingApplicationTests.java`
-- clase 'BookingApplicationTests' con baja cohesión (6%) — `src/test/java/ar/edu/programacion2/booking/BookingApplicationTests.java`
-- método 'BookingApplicationTests.invalidRegistrationDoesNotWriteUser' con complejidad 6 — `src/test/java/ar/edu/programacion2/booking/BookingApplicationTests.java`
-- método 'BookingApplicationTests.put' con complejidad 6 — `src/test/java/ar/edu/programacion2/booking/BookingApplicationTests.java`
-- método 'BookingApplicationTests.invalidSignedTokensAreRejected' con complejidad 12 — `src/test/java/ar/edu/programacion2/booking/BookingApplicationTests.java`
-- método 'BookingApplicationTests.holdPersistsOwnerAndIdsAndSameRequestIsIdempotent' de 31 líneas — `src/test/java/ar/edu/programacion2/booking/BookingApplicationTests.java`
-- método 'BookingApplicationTests.simultaneousFirstAttemptsSerializeRequestClaimInDatabase' de 30 líneas — `src/test/java/ar/edu/programacion2/booking/BookingApplicationTests.java`
-- método 'BookingApplicationTests.confirmationPersistsClaimNamesAndRemoteExpiryAndRepeatsWithoutPosting' de 31 líneas — `src/test/java/ar/edu/programacion2/booking/BookingApplicationTests.java`
-- método 'BookingApplicationTests.resultEvent' con complejidad 7 — `src/test/java/ar/edu/programacion2/booking/BookingApplicationTests.java`
-- método 'BookingApplicationTests.mismatchedRemoteReservationCannotMutateProcess' con complejidad 7 — `src/test/java/ar/edu/programacion2/booking/BookingApplicationTests.java`
-- función 'Import' de 1270 líneas — `src/test/java/ar/edu/programacion2/booking/BookingApplicationTests.java`
-- función 'Import' con complejidad 88 — `src/test/java/ar/edu/programacion2/booking/BookingApplicationTests.java`
-- clase 'RestAppointmentGatewayTests' grande (LOC=90, métodos=11, campos=0) — `src/test/java/ar/edu/programacion2/booking/appointments/RestAppointmentGatewayTests.java`
-- clase 'RestAvailabilitySourceTests' grande (LOC=88, métodos=14, campos=3) — `src/test/java/ar/edu/programacion2/booking/availability/RestAvailabilitySourceTests.java`
-- clase 'RestAvailabilitySourceTests' con baja cohesión (22%) — `src/test/java/ar/edu/programacion2/booking/availability/RestAvailabilitySourceTests.java`
-- clase 'AvailabilityServiceTests' grande (LOC=80, métodos=12, campos=4) — `src/test/java/ar/edu/programacion2/booking/availability/AvailabilityServiceTests.java`
-- método 'AvailabilityServiceTests.Schedule' con 5 parámetros — `src/test/java/ar/edu/programacion2/booking/availability/AvailabilityServiceTests.java`
-- clase 'RestHoldGatewayTests' grande (LOC=170, métodos=26, campos=5) — `src/test/java/ar/edu/programacion2/booking/holds/RestHoldGatewayTests.java`
-- clase 'RestHoldGatewayTests' con baja cohesión (29%) — `src/test/java/ar/edu/programacion2/booking/holds/RestHoldGatewayTests.java`
-- clase 'BookingKafkaIntegrationTests' grande (LOC=125, métodos=20, campos=1) — `src/test/java/ar/edu/programacion2/booking/phone/BookingKafkaIntegrationTests.java`
-- método 'BookingKafkaIntegrationTests.commitsSuccessAndDuplicatesButRedeliversFailureAfterRestart' de 46 líneas — `src/test/java/ar/edu/programacion2/booking/phone/BookingKafkaIntegrationTests.java`
-- método 'BookingKafkaIntegrationTests.send' con 5 parámetros — `src/test/java/ar/edu/programacion2/booking/phone/BookingKafkaIntegrationTests.java`
-- método 'BookingKafkaIntegrationTests.publishesPhoneEnvelopeWithProcessKeyUsingConfiguredProducer' de 31 líneas — `src/test/java/ar/edu/programacion2/booking/phone/BookingKafkaIntegrationTests.java`
 
-**DIP/concretos** (75)
+**DIP/concretos** (57)
 - clase 'AppointmentService' muy acoplada (CBO=14) — `src/main/java/ar/edu/programacion2/booking/appointments/AppointmentService.java`
 - clase 'AppointmentReconciliation' muy acoplada (CBO=31) — `src/main/java/ar/edu/programacion2/booking/appointments/AppointmentReconciliation.java`
 - clase 'AppointmentReconciliation' instancia 4 concretos (CBO=31) — `src/main/java/ar/edu/programacion2/booking/appointments/AppointmentReconciliation.java`
@@ -234,30 +208,9 @@ El análisis encontró las siguientes señales (archivo, sin número de línea a
 - clase 'BookingKafkaConfiguration' instancia 4 concretos (CBO=23) — `src/main/java/ar/edu/programacion2/booking/phone/BookingKafkaConfiguration.java`
 - clase 'PhoneProducerConfiguration' muy acoplada (CBO=22) — `src/main/java/ar/edu/programacion2/booking/phone/PhoneProducerConfiguration.java`
 - clase 'BookingEventInbox' muy acoplada (CBO=53) — `src/main/java/ar/edu/programacion2/booking/phone/BookingEventInbox.java`
-- clase 'BookingApplicationTests' muy acoplada (CBO=171) — `src/test/java/ar/edu/programacion2/booking/BookingApplicationTests.java`
-- clase 'RestAppointmentGatewayTests' muy acoplada (CBO=18) — `src/test/java/ar/edu/programacion2/booking/appointments/RestAppointmentGatewayTests.java`
-- clase 'RestAppointmentGatewayTests' instancia 4 concretos (CBO=18) — `src/test/java/ar/edu/programacion2/booking/appointments/RestAppointmentGatewayTests.java`
-- clase 'RestCancellationGatewayTests' muy acoplada (CBO=25) — `src/test/java/ar/edu/programacion2/booking/cancellation/RestCancellationGatewayTests.java`
-- clase 'RestCancellationGatewayTests' instancia 7 concretos (CBO=25) — `src/test/java/ar/edu/programacion2/booking/cancellation/RestCancellationGatewayTests.java`
-- clase 'RestAvailabilitySourceTests' muy acoplada (CBO=20) — `src/test/java/ar/edu/programacion2/booking/availability/RestAvailabilitySourceTests.java`
-- clase 'RestAvailabilitySourceTests' instancia 5 concretos (CBO=20) — `src/test/java/ar/edu/programacion2/booking/availability/RestAvailabilitySourceTests.java`
-- clase 'AvailabilityServiceTests' muy acoplada (CBO=26) — `src/test/java/ar/edu/programacion2/booking/availability/AvailabilityServiceTests.java`
-- clase 'RestHoldGatewayTests' muy acoplada (CBO=41) — `src/test/java/ar/edu/programacion2/booking/holds/RestHoldGatewayTests.java`
-- clase 'RestHoldGatewayTests' instancia 9 concretos (CBO=41) — `src/test/java/ar/edu/programacion2/booking/holds/RestHoldGatewayTests.java`
-- clase 'BookingResultValidationTests' muy acoplada (CBO=16) — `src/test/java/ar/edu/programacion2/booking/phone/BookingResultValidationTests.java`
-- clase 'BookingKafkaIntegrationTests' muy acoplada (CBO=37) — `src/test/java/ar/edu/programacion2/booking/phone/BookingKafkaIntegrationTests.java`
-- clase 'BookingKafkaIntegrationTests' instancia 14 concretos (CBO=37) — `src/test/java/ar/edu/programacion2/booking/phone/BookingKafkaIntegrationTests.java`
-- clase 'BookingEventTests' muy acoplada (CBO=10) — `src/test/java/ar/edu/programacion2/booking/phone/BookingEventTests.java`
-- clase 'KafkaPhonePublisherTests' muy acoplada (CBO=14) — `src/test/java/ar/edu/programacion2/booking/phone/KafkaPhonePublisherTests.java`
-- clase 'KafkaPhonePublisherTests' instancia 7 concretos (CBO=14) — `src/test/java/ar/edu/programacion2/booking/phone/KafkaPhonePublisherTests.java`
-- clase 'PhoneSubmissionTests' muy acoplada (CBO=8) — `src/test/java/ar/edu/programacion2/booking/phone/PhoneSubmissionTests.java`
-- clase 'PhoneSubmissionTests' instancia 13 concretos (CBO=8) — `src/test/java/ar/edu/programacion2/booking/phone/PhoneSubmissionTests.java`
 
 **OCP/type-switch** (1)
 - clase 'SecurityConfiguration' con 1 type-checks — `src/main/java/ar/edu/programacion2/booking/security/SecurityConfiguration.java`
-
-**POO** (1)
-- función 'Import' fuera de una clase — `src/test/java/ar/edu/programacion2/booking/BookingApplicationTests.java`
 
 **hexagonal** (3)
 - falta domain (hexagonal)
@@ -273,26 +226,26 @@ xychart-beta
     title "Índice de calidad a lo largo de los commits"
     x-axis ["446b065", "6ea7f23", "6355621", "088a6cd", "5826e5e", "f491c0d", "8cdb077", "13ca3ca", "3e4e9ca", "131b7c1", "77b7c75", "1097c35", "9e74943", "3254a7a", "72f25b0"]
     y-axis "Índice" 0 --> 100
-    line [0, 15, 37, 42, 40, 44, 44, 44, 44, 46, 47, 47, 48, 49, 49]
+    line [0, 15, 40, 45, 41, 45, 45, 45, 44, 46, 47, 48, 48, 49, 49]
 ```
 
 | # | Fecha | Commit | Autor | LOC | Índice | %POO | Duplic. | Sueltas |
 |---|---|---|---|---:|---:|---:|---:|---:|
 | 1 | 2026-09-21 | `446b065` | pilarmachinea | 0 | 0 | 0% | 0.0% | 0 |
 | 2 | 2026-09-22 | `6ea7f23` | Ing. Daniel Quinteros | 0 | 15 | 0% | 0.0% | 0 |
-| 3 | 2026-11-03 | `6355621` | pilarmachinea | 69 | 37 | 64% | 0.0% | 0 |
-| 4 | 2026-11-03 | `088a6cd` | pilarmachinea | 69 | 42 | 64% | 0.0% | 0 |
-| 5 | 2026-11-03 | `5826e5e` | pilarmachinea | 623 | 40 | 83% | 0.0% | 1 |
-| 6 | 2026-11-05 | `f491c0d` | pilarmachinea | 673 | 44 | 84% | 0.0% | 1 |
-| 7 | 2026-11-05 | `8cdb077` | pilarmachinea | 1,103 | 44 | 85% | 0.0% | 1 |
-| 8 | 2026-11-09 | `13ca3ca` | pilarmachinea | 1,676 | 44 | 87% | 0.0% | 1 |
-| 9 | 2026-11-09 | `3e4e9ca` | pilarmachinea | 2,016 | 44 | 88% | 0.0% | 1 |
-| 10 | 2026-11-09 | `131b7c1` | pilarmachinea | 2,543 | 46 | 88% | 0.0% | 1 |
-| 11 | 2026-11-09 | `77b7c75` | pilarmachinea | 3,125 | 47 | 88% | 0.0% | 1 |
-| 12 | 2026-11-10 | `1097c35` | pilarmachinea | 3,537 | 47 | 89% | 0.0% | 1 |
-| 13 | 2026-11-10 | `9e74943` | pilarmachinea | 3,894 | 48 | 88% | 0.0% | 1 |
-| 14 | 2026-11-10 | `3254a7a` | pilarmachinea | 4,342 | 49 | 89% | 0.0% | 1 |
-| 15 | 2026-11-11 | `72f25b0` | pilarmachinea | 4,342 | 49 | 89% | 0.0% | 1 |
+| 3 | 2026-11-03 | `6355621` | pilarmachinea | 69 | 40 | 56% | 0.0% | 0 |
+| 4 | 2026-11-03 | `088a6cd` | pilarmachinea | 69 | 45 | 56% | 0.0% | 0 |
+| 5 | 2026-11-03 | `5826e5e` | pilarmachinea | 623 | 41 | 73% | 0.0% | 0 |
+| 6 | 2026-11-05 | `f491c0d` | pilarmachinea | 673 | 45 | 73% | 0.0% | 0 |
+| 7 | 2026-11-05 | `8cdb077` | pilarmachinea | 1,103 | 45 | 77% | 0.0% | 0 |
+| 8 | 2026-11-09 | `13ca3ca` | pilarmachinea | 1,676 | 45 | 79% | 0.0% | 0 |
+| 9 | 2026-11-09 | `3e4e9ca` | pilarmachinea | 2,016 | 44 | 81% | 0.0% | 0 |
+| 10 | 2026-11-09 | `131b7c1` | pilarmachinea | 2,543 | 46 | 81% | 0.0% | 0 |
+| 11 | 2026-11-09 | `77b7c75` | pilarmachinea | 3,125 | 47 | 81% | 0.0% | 0 |
+| 12 | 2026-11-10 | `1097c35` | pilarmachinea | 3,537 | 48 | 82% | 0.0% | 0 |
+| 13 | 2026-11-10 | `9e74943` | pilarmachinea | 3,894 | 48 | 82% | 0.0% | 0 |
+| 14 | 2026-11-10 | `3254a7a` | pilarmachinea | 4,342 | 49 | 82% | 0.0% | 0 |
+| 15 | 2026-11-11 | `72f25b0` | pilarmachinea | 4,342 | 49 | 82% | 0.0% | 0 |
 
 ---
 _Informe generado por la cátedra. Las dimensiones y umbrales corresponden a `calidad.py` (perfil `exigente`); el semáforo, a `CRITERIOS-CALIDAD.md`. La documentación del repositorio no se evalúa. Ante dudas, revisá el archivo señalado._
