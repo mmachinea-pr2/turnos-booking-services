@@ -9,6 +9,7 @@
 - [x] Probar teléfono, confirmación Kafka, consultas y cancelación con datos ficticios.
 - [x] Verificar aislamiento por usuario y persistencia tras reiniciar.
 - [x] Documentar ejecución y límites de la evidencia local.
-- [ ] Repetir el flujo autenticado completo contra cátedra real.
+- [x] Repetir el flujo autenticado completo contra cátedra real.
 
-La comprobación TCP de los puertos de cátedra no completa la última tarea.
+Flujo principal real completado el 2026-11-11 mediante Postman; ver `VALIDATION.md`.
+La evidencia de aislamiento, duplicados y reinicios corresponde a las pruebas locales.
