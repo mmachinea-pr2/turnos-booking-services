@@ -3,23 +3,23 @@
 
 > Documento **generado automáticamente** por la cátedra de Programación II (UM): RepoSense + análisis de calidad de **7 dimensiones**. **No editar a mano**: se regenera en cada evaluación.
 > Rama evaluada: `main`. Análisis **heurístico** (regex + métricas) + build: es una criba para orientar la revisión, **no una nota**. La **documentación** del repositorio no se evalúa.
-> Generado: 2026-11-18.
+> Generado: 2026-11-20.
 
 ## 1. Veredicto
 
 | Aspecto | Resultado |
 |---|---|
-| Índice de calidad | **64/100** |
+| Índice de calidad | **73/100** |
 | Tipo de repositorio | `backend` |
 | Build (`mvnw verify` / `gradlew check`) | OK |
-| Código (LOC) | 4,342 |
-| Archivos de código | 79 |
-| Clases | 107 |
+| Código (LOC) | 4,506 |
+| Archivos de código | 87 |
+| Clases | 115 |
 | Código dentro de clases (%POO) | 82% |
 | Funciones fuera de clases | 0 |
 | Duplicación (puerta) | 0.0% |
 | Duplicación lógica | 0.0% |
-| Duplicación de boilerplate | 6.4% |
+| Duplicación de boilerplate | 6.0% |
 | Cobertura | 98% |
 
 > Este informe **describe** lo que el análisis midió con los criterios ya establecidos de la materia. No es una nota.
@@ -39,7 +39,7 @@ Criterios de la cátedra (`CRITERIOS-CALIDAD.md`): **Aprobar** se juega con el p
 
 | Autor | Commits | Código (LOC) | Tests (LOC) | Docs (LOC) | Días activos | % del código |
 |---|---:|---:|---:|---:|---:|---:|
-| pilarmachinea | 28 | 2,303 | 2,615 | 1,721 | 8 | 100% |
+| pilarmachinea | 29 | 2,404 | 2,680 | 1,757 | 8 | 100% |
 
 > _El LOC de autoría lo calcula RepoSense sobre el historial y puede diferir del LOC de código del análisis (que mira el estado de `main`)._
 
@@ -50,7 +50,7 @@ Cada dimensión indica **qué mide**, **por qué importa** y **tu resultado**. C
 | Dimensión | Peso | Puntaje |
 |:--|--:|--:|
 | **D1** Diseño OO, SOLID y patrones (20%) | 20% | 3 |
-| **D2** Arquitectura hexagonal — backend (15%) | 15% | 36 |
+| **D2** Arquitectura hexagonal — backend (15%) | 15% | 86 |
 | **D3** Frontend KMP: MVVM y buenas prácticas (10%) | 10% | N/A |
 | **D4** Integración y contrato (10%) | 10% | 70 |
 | **D5** Seguridad y robustez (10%) | 10% | 100 |
@@ -71,11 +71,7 @@ Cada dimensión indica **qué mide**, **por qué importa** y **tu resultado**. C
 
 - **Qué mide:** Separación en capas (dominio, puertos de entrada/salida, adaptadores) y dirección de las dependencias del backend.
 - **Por qué importa:** Aislar el dominio de la infraestructura permite cambiar la base de datos, el framework o el transporte sin tocar las reglas de negocio.
-- **Tu resultado:** **36/100**
-- **Para investigar la causa:**
-    - ¿El dominio importa framework o detalles de persistencia?
-    - ¿Dónde vive la lógica de negocio frente a los controladores?
-    - ¿Se definieron puertos para los servicios que se consumen?
+- **Tu resultado:** **86/100**
 
 ### D4. Integración y contrato (10%)
 
@@ -114,19 +110,21 @@ El análisis encontró las siguientes señales, con el archivo y la línea donde
 | `src/main/java/ar/edu/programacion2/booking/holds/HoldGateway.java` | 6 |
 | `src/main/java/ar/edu/programacion2/booking/phone/BookingOutcomeHandler.java` | 6 |
 | `src/main/java/ar/edu/programacion2/booking/phone/BookingEvent.java` | 5 |
-| `src/main/java/ar/edu/programacion2/booking/appointments/AppointmentReconciliation.java` | 4 |
 | `src/main/java/ar/edu/programacion2/booking/appointments/RestAppointmentGateway.java` | 4 |
 | `src/main/java/ar/edu/programacion2/booking/cancellation/CancellationRepository.java` | 4 |
 | `src/main/java/ar/edu/programacion2/booking/availability/AvailabilityService.java` | 4 |
 | `src/main/java/ar/edu/programacion2/booking/holds/HoldService.java` | 4 |
+| `src/main/java/ar/edu/programacion2/booking/holds/RestHoldGateway.java` | 4 |
 
-**SRP/responsabilidad** (51)
+**SRP/responsabilidad** (53)
 - método 'Appointment.Appointment' con 10 parámetros — `src/main/java/ar/edu/programacion2/booking/appointments/Appointment.java:7`
-- método 'AppointmentReconciliation.apply' de 43 líneas — `src/main/java/ar/edu/programacion2/booking/appointments/AppointmentReconciliation.java:26`
-- método 'AppointmentReconciliation.apply' con complejidad 24 — `src/main/java/ar/edu/programacion2/booking/appointments/AppointmentReconciliation.java:26`
 - método 'AppointmentService.reconcile' con complejidad 6 — `src/main/java/ar/edu/programacion2/booking/appointments/AppointmentService.java:25`
 - clase 'RestAppointmentGateway' con baja cohesión (5%) — `src/main/java/ar/edu/programacion2/booking/appointments/RestAppointmentGateway.java:14`
 - método 'RestAppointmentGateway.find' con complejidad 9 — `src/main/java/ar/edu/programacion2/booking/appointments/RestAppointmentGateway.java:23`
+- método 'ReconciliationPolicy.decide' con complejidad 8 — `src/main/java/ar/edu/programacion2/booking/appointments/domain/ReconciliationPolicy.java:10`
+- método 'ReconciliationState.ReconciliationState' con 7 parámetros — `src/main/java/ar/edu/programacion2/booking/appointments/domain/ReconciliationState.java:7`
+- método 'JdbcReconciliationStore.apply' con 5 parámetros — `src/main/java/ar/edu/programacion2/booking/appointments/infrastructure/persistence/JdbcReconciliationStore.java:31`
+- método 'JdbcReconciliationStore.apply' con complejidad 14 — `src/main/java/ar/edu/programacion2/booking/appointments/infrastructure/persistence/JdbcReconciliationStore.java:31`
 - clase 'AvailabilityService' grande (LOC=58, métodos=10, campos=2) — `src/main/java/ar/edu/programacion2/booking/availability/AvailabilityService.java:8`
 - método 'AvailabilityService.find' con complejidad 6 — `src/main/java/ar/edu/programacion2/booking/availability/AvailabilityService.java:16`
 - método 'AvailabilitySource.Schedule' con 5 parámetros — `src/main/java/ar/edu/programacion2/booking/availability/AvailabilitySource.java:10`
@@ -173,13 +171,14 @@ El análisis encontró las siguientes señales, con el archivo y la línea donde
 - método 'UserAccount.UserAccount' con 9 parámetros — `src/main/java/ar/edu/programacion2/booking/users/UserAccount.java:5`
 - método 'UserRepository.insert' con complejidad 9 — `src/main/java/ar/edu/programacion2/booking/users/UserRepository.java:24`
 
-**DIP/concretos** (57)
+**DIP/concretos** (58)
 - clase 'AppointmentController' muy acoplada (CBO=10) — `src/main/java/ar/edu/programacion2/booking/appointments/AppointmentController.java:10`
-- clase 'AppointmentReconciliation' muy acoplada (CBO=31) — `src/main/java/ar/edu/programacion2/booking/appointments/AppointmentReconciliation.java:13`
-- clase 'AppointmentReconciliation' instancia 4 concretos (CBO=31) — `src/main/java/ar/edu/programacion2/booking/appointments/AppointmentReconciliation.java:13`
 - clase 'AppointmentService' muy acoplada (CBO=14) — `src/main/java/ar/edu/programacion2/booking/appointments/AppointmentService.java:8`
 - clase 'RestAppointmentGateway' muy acoplada (CBO=21) — `src/main/java/ar/edu/programacion2/booking/appointments/RestAppointmentGateway.java:14`
 - clase 'RestAppointmentGateway' instancia 6 concretos (CBO=21) — `src/main/java/ar/edu/programacion2/booking/appointments/RestAppointmentGateway.java:14`
+- clase 'ReconciliationPolicy' muy acoplada (CBO=16) — `src/main/java/ar/edu/programacion2/booking/appointments/domain/ReconciliationPolicy.java:9`
+- clase 'ReconciliationPolicy' instancia 3 concretos (CBO=16) — `src/main/java/ar/edu/programacion2/booking/appointments/domain/ReconciliationPolicy.java:9`
+- clase 'JdbcReconciliationStore' muy acoplada (CBO=23) — `src/main/java/ar/edu/programacion2/booking/appointments/infrastructure/persistence/JdbcReconciliationStore.java:16`
 - clase 'AvailabilityConfiguration' muy acoplada (CBO=10) — `src/main/java/ar/edu/programacion2/booking/availability/AvailabilityConfiguration.java:10`
 - clase 'AvailabilityController' muy acoplada (CBO=9) — `src/main/java/ar/edu/programacion2/booking/availability/AvailabilityController.java:12`
 - clase 'AvailabilityService' muy acoplada (CBO=16) — `src/main/java/ar/edu/programacion2/booking/availability/AvailabilityService.java:8`
@@ -235,21 +234,19 @@ El análisis encontró las siguientes señales, con el archivo y la línea donde
 **OCP/type-switch** (1)
 - clase 'SecurityConfiguration' con 1 type-checks — `src/main/java/ar/edu/programacion2/booking/security/SecurityConfiguration.java:20`
 
-**hexagonal** (3)
-- falta domain (hexagonal)
+**hexagonal** (1)
 - falta ports/in (hexagonal)
-- falta ports/out (hexagonal)
 
 ## 6. Evolución por commit
 
-Métricas calculadas sobre el estado de `main` en **cada commit** (16 commits con trabajo), del primero al último. La calidad usa el perfil `exigente`; el aporte de código lo mide RepoSense. El índice puede **bajar** al crecer el proyecto: se acumulan señales.
+Métricas calculadas sobre el estado de `main` en **cada commit** (17 commits con trabajo), del primero al último. La calidad usa el perfil `exigente`; el aporte de código lo mide RepoSense. El índice puede **bajar** al crecer el proyecto: se acumulan señales.
 
 ```mermaid
 xychart-beta
     title "Índice de calidad a lo largo de los commits"
-    x-axis ["446b065", "6ea7f23", "6355621", "088a6cd", "5826e5e", "f491c0d", "8cdb077", "13ca3ca", "3e4e9ca", "131b7c1", "77b7c75", "1097c35", "9e74943", "3254a7a", "72f25b0", "b8c3f91"]
+    x-axis ["446b065", "6ea7f23", "6355621", "088a6cd", "5826e5e", "f491c0d", "8cdb077", "13ca3ca", "3e4e9ca", "131b7c1", "77b7c75", "1097c35", "9e74943", "3254a7a", "72f25b0", "b8c3f91", "dd1e03e"]
     y-axis "Índice" 0 --> 100
-    line [0, 15, 40, 45, 41, 45, 45, 45, 44, 46, 47, 48, 48, 49, 49, 49]
+    line [0, 15, 40, 45, 41, 45, 45, 45, 44, 46, 47, 48, 48, 49, 49, 49, 58]
 ```
 
 | # | Fecha | Commit | Autor | LOC | Índice | %POO | Duplic. | Sueltas |
@@ -270,6 +267,7 @@ xychart-beta
 | 14 | 2026-11-10 | `3254a7a` | pilarmachinea | 4,342 | 49 | 82% | 0.0% | 0 |
 | 15 | 2026-11-11 | `72f25b0` | pilarmachinea | 4,342 | 49 | 82% | 0.0% | 0 |
 | 16 | 2026-11-17 | `b8c3f91` | pilarmachinea | 4,342 | 49 | 82% | 0.0% | 0 |
+| 17 | 2026-11-19 | `dd1e03e` | Ing. Daniel Quinteros | 4,506 | 58 | 82% | 0.0% | 0 |
 
 ---
 _Informe generado por la cátedra. Las dimensiones y umbrales corresponden a `calidad.py` (perfil `exigente`); el semáforo, a `CRITERIOS-CALIDAD.md`. La documentación del repositorio no se evalúa. Ante dudas, revisá el archivo señalado._
